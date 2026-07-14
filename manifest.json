@@ -1,0 +1,11 @@
+{
+	"id": "svelte-plugin-template",
+	"name": "Svelte Plugin Template",
+	"version": "1.0.0",
+	"minAppVersion": "1.7.2",
+	"description": "A starter template for building Obsidian plugins with Svelte, Tailwind, and shadcn-svelte.",
+	"author": "Abdulkader Safi",
+	"authorUrl": "https://abdulkadersafi.com",
+	"fundingUrl": "https://ko-fi.com/abdulkadersafi",
+	"isDesktopOnly": false
+}
