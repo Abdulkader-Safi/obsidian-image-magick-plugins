@@ -1,71 +1,49 @@
-# Svelte plugin template
+# ImageMagick for Obsidian
 
-A starter template for building Obsidian plugins with Svelte 5, Tailwind CSS v4, and shadcn-svelte. Clone it, rename a few fields, and start building.
+Optimize images inside your vault. Resize, crop, rotate, compress and convert formats, without leaving Obsidian and without uploading anything anywhere.
+
+Powered by [magick-wasm](https://github.com/dlemstra/magick-wasm), the WebAssembly build of ImageMagick 7. This is the Obsidian port of the [VS Code extension](https://github.com/Abdulkader-Safi/vscode-extensions-ImageMagick).
 
 By [Abdulkader Safi](https://abdulkadersafi.com).
 
-## What you get
+## Features
 
-- TypeScript plugin entry (`src/main.ts`) with clean lifecycle handling.
-- A Svelte 5 app mounted into an Obsidian `ItemView` (`src/ui/`).
-- Tailwind CSS v4 wired up, with Preflight disabled so it never fights Obsidian's own styling.
-- shadcn-svelte components that inherit your active Obsidian theme and light/dark mode automatically (see `src/ui/lib/`).
-- A ribbon icon, a command, and a settings tab as working examples.
-- esbuild bundling, ESLint with `eslint-plugin-obsidianmd`, and GitHub Actions for lint and release.
+- **Resize**: width and height inputs, lock aspect ratio, quick percentage presets.
+- **Crop**: drag a region on the preview, or type exact coordinates.
+- **Rotate and flip**: 90° presets, a free-angle slider, horizontal and vertical flip.
+- **Compress**: quality slider (1-100) for lossy formats.
+- **Change format**: JPEG, PNG, WebP, GIF, TIFF, BMP, and AVIF where the bundled binary supports it.
+- **Live preview** with an output size estimate.
+- **Save** to any vault path, with a smart default (`photo.optimized.webp`) that never overwrites your source.
+- **Presets**: right-click an image (or a multi-selection) and pick **Optimize with preset** to write optimized output straight into the vault, no editor. A preset holds a format, quality, max size, and metadata-strip choice. Edit them in the plugin settings, or use **Save as preset** in the editor.
+- **Bulk edit**: select several images, tune the pipeline on one, and **Save all** applies it to every file.
 
-## Use this template
+## Usage
 
-1. Click **Use this template** on GitHub (or clone this repo) and give your plugin a name.
-2. Update `manifest.json`: set your own `id`, `name`, `description`, `author`, `authorUrl`, and `fundingUrl`. The `id` is permanent once released, so pick carefully.
-3. Update `package.json`: `name`, `description`, `author`, and `repository`.
-4. Rename the example pieces to match your plugin:
-   - The plugin class in `src/main.ts` (`SveltePluginTemplate`).
-   - The view in `src/ui/ExampleView.ts` and its `EXAMPLE_VIEW_TYPE`.
-   - The settings interface and tab in `src/settings.ts`.
-5. Build your UI in `src/ui/App.svelte` and add more Svelte components.
+1. **From the file explorer**: right-click any image, then **Optimize with ImageMagick** or **Optimize with preset**.
+2. **From the command palette**: **ImageMagick: Open image**, then pick a file.
+3. **Drag and drop**: open the view, then drag an image in from outside Obsidian.
 
-## Develop
+## Supported formats
 
-Requires Node.js v18 or newer (`node --version`).
+Reads anything ImageMagick can read. Writes whatever the bundled wasm can encode, typically JPEG, PNG, WebP, GIF, TIFF and BMP. The plugin probes the available encoders on first use and only offers formats it can actually produce.
+
+## Development
 
 ```bash
-npm install      # install dependencies
-npm run dev      # compile JS and CSS in watch mode
-npm run build    # production build
-npm run lint     # lint with ESLint
+npm install
+npm run dev     # rebuild main.js on save
+npm run build   # typecheck, then production bundle
+npm test        # encodes a real image through the wasm
+npm run lint
 ```
 
-`npm run dev` runs two watchers: esbuild compiles `src/main.ts` to `main.js`, and the Tailwind CLI compiles `src/styles.css` to `styles.css`. Reload Obsidian to pick up changes.
+The UI is Svelte 5 mounted into an Obsidian `ItemView`. Styling is plain CSS in `styles.css`, written against Obsidian's own CSS variables, so the editor follows the active theme and light/dark mode with no rebuild. There is no CSS build step.
 
-For local testing, develop inside your vault at `VaultFolder/.obsidian/plugins/your-plugin-id/`, then enable the plugin in **Settings → Community plugins**.
+### Why main.js is large
 
-## How the styling works
-
-Tailwind's Preflight reset is intentionally left out so Tailwind does not override Obsidian's UI. The Svelte app mounts into an `.app-root` element, and shadcn-svelte's tokens (`--primary`, `--background`, and so on) are mapped onto Obsidian's theme variables in `src/styles.css`. Because they resolve at runtime, switching theme or light/dark mode recolors every component with no rebuild.
-
-## Release
-
-- Bump `version` in `manifest.json` (Semantic Versioning) and update `versions.json` to map plugin version to minimum app version. Running `npm version patch` (or `minor` / `major`) does both.
-- Push a tag that exactly matches the `manifest.json` version, with no leading `v`. The release workflow builds the plugin and creates a draft GitHub release with `main.js`, `manifest.json`, and `styles.css` attached.
-- Publish the draft release.
-
-## Submit to the community catalog
-
-- Read the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Make sure your repo has a `README.md` and a published release.
-- Open a pull request at [obsidian-releases](https://github.com/obsidianmd/obsidian-releases) to add your plugin.
-
-## Funding
-
-If this template saves you time, you can support the work at [ko-fi.com/abdulkadersafi](https://ko-fi.com/abdulkadersafi).
+Obsidian only downloads `main.js`, `manifest.json` and `styles.css` when installing a plugin, so the 14 MB ImageMagick wasm has to live inside `main.js`. The build gzips it and inlines it as base64 (about 6.8 MB), and the renderer expands it with the platform's own `DecompressionStream` the first time you open an image. Nothing is fetched at runtime, and no image ever leaves your machine.
 
 ## License
 
-Released under the 0BSD license. See [LICENSE](LICENSE).
-
-## References
-
-- [Obsidian API docs](https://docs.obsidian.md)
-- [Svelte](https://svelte.dev)
-- [Tailwind CSS](https://tailwindcss.com)
-- [shadcn-svelte](https://shadcn-svelte.com)
+MIT

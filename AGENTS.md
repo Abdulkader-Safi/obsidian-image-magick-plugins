@@ -2,10 +2,12 @@
 
 ## Project overview
 
-- A starter template for Obsidian plugins built with Svelte, Tailwind, and shadcn-svelte.
+- An image optimizer for Obsidian (resize, crop, rotate, compress, convert), built on Svelte 5 and the ImageMagick wasm build.
 - Target: Obsidian Community Plugin (TypeScript + Svelte → bundled JavaScript).
 - Entry point: `src/main.ts` compiled to `main.js` and loaded by Obsidian.
 - UI lives in `src/ui/` as Svelte components mounted into an Obsidian `ItemView`.
+- Styling is hand-written plain CSS in `styles.css`, on Obsidian's CSS variables. No Tailwind, no CSS build step.
+- `src/engine.ts` wraps `@imagemagick/magick-wasm`. The wasm is gzipped by `scripts/prepare-wasm.mjs` and inlined into `main.js` as base64, because Obsidian only ships `main.js`, `manifest.json` and `styles.css` to users.
 - Required release artifacts: `main.js`, `manifest.json`, and `styles.css`.
 
 ## Environment & tooling

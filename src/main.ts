@@ -1,13 +1,5 @@
-import {
-	Menu,
-	Notice,
-	Plugin,
-	TAbstractFile,
-	TFile,
-	WorkspaceLeaf,
-	normalizePath,
-} from 'obsidian';
-import { encodePreset, setWasmLoader } from './engine';
+import { Menu, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from 'obsidian';
+import { encodePreset } from './engine';
 import type { OptimizePreset } from './engine';
 import { parsePresets, presetOutputPath, resolvePresets } from './presets';
 import { ImagePickerModal, PresetPickerModal } from './modals';
@@ -27,13 +19,6 @@ export default class ImageMagickPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-
-		// The 14 MB wasm ships beside main.js rather than being inlined in it, and
-		// is read once, lazily, the first time an image is touched.
-		setWasmLoader(async () => {
-			const path = normalizePath(`${this.manifest.dir}/magick.wasm`);
-			return new Uint8Array(await this.app.vault.adapter.readBinary(path));
-		});
 
 		this.registerView(
 			EDITOR_VIEW_TYPE,

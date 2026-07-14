@@ -7,6 +7,8 @@ import {
 	MagickImageInfo,
 	type IMagickImage,
 } from '@imagemagick/magick-wasm';
+// Base64 of the gzipped engine, inlined by esbuild's `.gz` loader at build time.
+import MAGICK_WASM_GZ from '../build/magick.wasm.gz';
 import {
 	FORMAT_TO_MAGICK,
 	LOSSLESS_FORMATS,
@@ -66,21 +68,30 @@ export interface OptimizePreset {
 }
 
 let initPromise: Promise<void> | null = null;
-let loadWasm: (() => Promise<Uint8Array>) | null = null;
 
-/** Set once on plugin load; reads magick.wasm out of the plugin folder. */
-export function setWasmLoader(loader: () => Promise<Uint8Array>): void {
-	loadWasm = loader;
-	initPromise = null;
+/**
+ * Unpacks the gzipped wasm that esbuild inlined as base64. Obsidian only ships
+ * main.js, manifest.json and styles.css to users, so the engine has to live
+ * inside the bundle; gzip keeps that at ~6.8 MB instead of ~19.5 MB, and the
+ * renderer's own DecompressionStream expands it.
+ */
+async function inflateWasm(): Promise<Uint8Array> {
+	const binary = atob(MAGICK_WASM_GZ);
+	const gz = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) {
+		gz[i] = binary.charCodeAt(i);
+	}
+	const stream = new Blob([gz])
+		.stream()
+		.pipeThrough(new DecompressionStream('gzip'));
+	return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
+/** Initializes ImageMagick once, lazily: nothing is decoded until an image is opened. */
 function ensureInitialized(): Promise<void> {
 	if (!initPromise) {
 		initPromise = (async () => {
-			if (!loadWasm) {
-				throw new Error('ImageMagick wasm loader was never configured.');
-			}
-			await initializeImageMagick(await loadWasm());
+			await initializeImageMagick(await inflateWasm());
 		})();
 	}
 	return initPromise;

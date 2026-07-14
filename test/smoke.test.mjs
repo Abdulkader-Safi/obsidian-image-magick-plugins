@@ -12,13 +12,15 @@ import path from 'node:path';
 import { test, before } from 'node:test';
 import { createRequire } from 'node:module';
 import esbuild from 'esbuild';
+import { prepareWasm } from '../scripts/prepare-wasm.mjs';
 
 const require = createRequire(import.meta.url);
 let mod;
 
 before(async () => {
-	// Bundle the real sources the same way the plugin does, so the test exercises
-	// shipped code rather than a copy of it.
+	// Bundle the real sources exactly as the plugin does, wasm inlined and all,
+	// so the test exercises shipped code rather than a copy of it.
+	prepareWasm();
 	const outfile = path.join(
 		await fs.mkdtemp(path.join(os.tmpdir(), 'im-test-')),
 		'entry.mjs',
@@ -30,13 +32,11 @@ before(async () => {
 		platform: 'neutral',
 		mainFields: ['browser', 'module', 'main'],
 		conditions: ['browser'],
+		loader: { '.gz': 'base64' },
 		outfile,
 		logLevel: 'silent',
 	});
 	mod = await import(outfile);
-	mod.setWasmLoader(async () =>
-		fs.readFile(require.resolve('@imagemagick/magick-wasm/magick.wasm')),
-	);
 });
 
 test('presetOutputPath', () => {
