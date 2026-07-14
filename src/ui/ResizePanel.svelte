@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { ResizeSpec } from '../engine';
+	import Switch from './Switch.svelte';
+	import { icon } from './icon';
 
 	interface Props {
 		resize: ResizeSpec | null;
@@ -23,6 +25,13 @@
 			? { width: widthInput, height: heightInput, lockAspect }
 			: null;
 	});
+
+	// Which percentage chip, if any, the current size corresponds to.
+	const activePercent = $derived(
+		[25, 50, 75, 150, 200].find(
+			(p) => widthInput === Math.max(1, Math.round((sourceWidth * p) / 100)),
+		) ?? null,
+	);
 
 	function setWidth(value: number) {
 		widthInput = clamp(value);
@@ -60,45 +69,57 @@
 <section class="im-panel">
 	<header class="im-panel-head">
 		<h2>Resize</h2>
-		<label class="im-check">
-			<input type="checkbox" bind:checked={enabled} />
-			<span>Enabled</span>
-		</label>
+		<Switch bind:checked={enabled} label="Enable resize" />
 	</header>
 
-	<div class="im-grid im-grid-2" class:im-dimmed={!enabled}>
-		<label>
-			<span>Width</span>
-			<input
-				type="number"
-				min="1"
-				value={widthInput}
-				oninput={(e) => setWidth(Number(e.currentTarget.value))}
-				disabled={!enabled}
-			/>
-		</label>
-		<label>
-			<span>Height</span>
-			<input
-				type="number"
-				min="1"
-				value={heightInput}
-				oninput={(e) => setHeight(Number(e.currentTarget.value))}
-				disabled={!enabled}
-			/>
-		</label>
-	</div>
+	<div class="im-panel-body" class:im-off={!enabled}>
+		<div class="im-dims">
+			<label class="im-field">
+				<span>Width</span>
+				<input
+					type="number"
+					min="1"
+					value={widthInput}
+					oninput={(e) => setWidth(Number(e.currentTarget.value))}
+					disabled={!enabled}
+				/>
+			</label>
 
-	<label class="im-check">
-		<input type="checkbox" bind:checked={lockAspect} disabled={!enabled} />
-		<span>Lock aspect ratio</span>
-	</label>
+			<button
+				type="button"
+				class="im-lock"
+				class:is-on={lockAspect}
+				disabled={!enabled}
+				aria-pressed={lockAspect}
+				aria-label="Lock aspect ratio"
+				title={lockAspect ? 'Aspect ratio locked' : 'Aspect ratio unlocked'}
+				onclick={() => (lockAspect = !lockAspect)}
+				use:icon={lockAspect ? 'lock' : 'unlock'}
+			></button>
 
-	<div class="im-chips">
-		{#each [25, 50, 75, 150, 200] as p (p)}
-			<button type="button" onclick={() => setPercent(p)} disabled={!enabled}>
-				{p}%
-			</button>
-		{/each}
+			<label class="im-field">
+				<span>Height</span>
+				<input
+					type="number"
+					min="1"
+					value={heightInput}
+					oninput={(e) => setHeight(Number(e.currentTarget.value))}
+					disabled={!enabled}
+				/>
+			</label>
+		</div>
+
+		<div class="im-seg im-seg-5">
+			{#each [25, 50, 75, 150, 200] as p (p)}
+				<button
+					type="button"
+					class:is-active={activePercent === p}
+					onclick={() => setPercent(p)}
+					disabled={!enabled}
+				>
+					{p}%
+				</button>
+			{/each}
+		</div>
 	</div>
 </section>

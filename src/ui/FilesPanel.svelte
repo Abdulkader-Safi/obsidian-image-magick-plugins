@@ -12,23 +12,27 @@
 </script>
 
 <section class="im-panel">
-	<h2>Files ({files.length})</h2>
-	<p class="im-hint">
-		Tune the pipeline on any file. Save all applies it to every file in this list.
-	</p>
-	<ul class="im-files">
-		{#each files as f, i (f.path)}
-			<li>
-				<button
-					type="button"
-					{disabled}
-					title={f.path}
-					class:im-selected={i === activeIndex}
-					onclick={() => onSelect(i)}
-				>
-					{f.name}
-				</button>
-			</li>
-		{/each}
-	</ul>
+	<header class="im-panel-head">
+		<h2>Files</h2>
+		<span class="im-badge">{files.length}</span>
+	</header>
+
+	<div class="im-panel-body">
+		<ul class="im-files">
+			{#each files as f, i (f.path)}
+				<li>
+					<button
+						type="button"
+						{disabled}
+						title={f.path}
+						class:is-active={i === activeIndex}
+						onclick={() => onSelect(i)}
+					>
+						{f.name}
+					</button>
+				</li>
+			{/each}
+		</ul>
+		<p class="im-hint">Tune the pipeline on any file. Save all applies it to every one.</p>
+	</div>
 </section>

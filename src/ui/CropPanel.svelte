@@ -57,52 +57,55 @@
 		{/if}
 	</header>
 
-	<p class="im-hint">Drag on the preview to select a region, or type it below.</p>
+	<div class="im-panel-body">
+		{#if crop}
+			<div class="im-grid-2">
+				<label class="im-field">
+					<span>X</span>
+					<input
+						type="number"
+						min="0"
+						value={crop.x}
+						oninput={(e) => update('x', Number(e.currentTarget.value))}
+					/>
+				</label>
+				<label class="im-field">
+					<span>Y</span>
+					<input
+						type="number"
+						min="0"
+						value={crop.y}
+						oninput={(e) => update('y', Number(e.currentTarget.value))}
+					/>
+				</label>
+				<label class="im-field">
+					<span>Width</span>
+					<input
+						type="number"
+						min="1"
+						value={crop.w}
+						oninput={(e) => update('w', Number(e.currentTarget.value))}
+					/>
+				</label>
+				<label class="im-field">
+					<span>Height</span>
+					<input
+						type="number"
+						min="1"
+						value={crop.h}
+						oninput={(e) => update('h', Number(e.currentTarget.value))}
+					/>
+				</label>
+			</div>
+		{:else}
+			<p class="im-hint">Drag a region on the preview, or start from a preset below.</p>
+		{/if}
 
-	{#if crop}
-		<div class="im-grid im-grid-2">
-			<label>
-				<span>X</span>
-				<input
-					type="number"
-					min="0"
-					value={crop.x}
-					oninput={(e) => update('x', Number(e.currentTarget.value))}
-				/>
-			</label>
-			<label>
-				<span>Y</span>
-				<input
-					type="number"
-					min="0"
-					value={crop.y}
-					oninput={(e) => update('y', Number(e.currentTarget.value))}
-				/>
-			</label>
-			<label>
-				<span>Width</span>
-				<input
-					type="number"
-					min="1"
-					value={crop.w}
-					oninput={(e) => update('w', Number(e.currentTarget.value))}
-				/>
-			</label>
-			<label>
-				<span>Height</span>
-				<input
-					type="number"
-					min="1"
-					value={crop.h}
-					oninput={(e) => update('h', Number(e.currentTarget.value))}
-				/>
-			</label>
+		<div class="im-seg im-seg-4">
+			{#each [25, 50, 75, 90] as p (p)}
+				<button type="button" onclick={() => center(p)}>{p}%</button>
+			{/each}
 		</div>
-	{/if}
-
-	<div class="im-chips">
-		{#each [25, 50, 75, 90] as p (p)}
-			<button type="button" onclick={() => center(p)}>Center {p}%</button>
-		{/each}
+		<p class="im-hint">Centered crop, as a share of the source.</p>
 	</div>
 </section>

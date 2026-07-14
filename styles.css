@@ -4,6 +4,10 @@
  * Hand-written, loaded by Obsidian, and built on Obsidian's own CSS variables,
  * so the editor follows the active theme (and light/dark) with no rebuild. No
  * CSS build step: there is nothing to compile.
+ *
+ * Every control is laid out explicitly. Nothing here relies on a generic
+ * `label` or `button` selector, because those leak across panels and were what
+ * pushed checkbox text underneath its box in the first cut.
  */
 
 .im-root {
@@ -25,49 +29,63 @@
 .im-sidebar {
 	display: flex;
 	flex-direction: column;
-	width: 260px;
+	width: 264px;
 	flex-shrink: 0;
 	overflow-y: auto;
 	border-right: 1px solid var(--background-modifier-border);
 	background-color: var(--background-secondary);
 }
 
+/* The source header stays put while the panels scroll under it. */
 .im-source {
+	position: sticky;
+	top: 0;
+	z-index: 1;
 	display: flex;
-	align-items: baseline;
-	gap: var(--size-4-2);
-	padding: var(--size-4-2) var(--size-4-3);
+	flex-direction: column;
+	gap: 2px;
+	padding: var(--size-4-3);
 	border-bottom: 1px solid var(--background-modifier-border);
-	font-size: var(--font-ui-smaller);
+	background-color: var(--background-secondary);
 }
 
 .im-source-name {
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-medium);
+	color: var(--text-normal);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.im-dim {
-	margin-left: auto;
+.im-source-meta {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
-	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
 }
+
+.im-source-out {
+	color: var(--text-accent);
+}
+
+.im-arrow {
+	display: flex;
+	align-items: center;
+}
+
+.im-arrow svg {
+	width: 12px;
+	height: 12px;
+}
+
+/* Panels ---------------------------------------------------------------- */
 
 .im-panel {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-4-2);
 	padding: var(--size-4-3);
 	border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.im-panel h2 {
-	margin: 0;
-	font-size: var(--font-ui-smaller);
-	font-weight: var(--font-semibold);
-	letter-spacing: 0.05em;
-	text-transform: uppercase;
-	color: var(--text-normal);
 }
 
 .im-panel-head {
@@ -75,109 +93,243 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: var(--size-4-2);
+	min-height: 22px;
+	margin-bottom: var(--size-4-2);
+}
+
+.im-panel-head h2 {
+	margin: 0;
+	font-size: 11px;
+	font-weight: var(--font-semibold);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+}
+
+.im-panel-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+/* A panel whose controls are inert (resize off, quality on a lossless format). */
+.im-off {
+	opacity: 0.45;
+	pointer-events: none;
+}
+
+.im-panel-note {
+	margin-top: var(--size-4-2);
+}
+
+.im-badge {
+	padding: 1px 6px;
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-border);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	font-variant-numeric: tabular-nums;
 }
 
 .im-hint {
 	margin: 0;
 	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
+	line-height: 1.4;
+	color: var(--text-faint);
 }
 
 .im-empty {
 	padding: var(--size-4-4);
 	font-size: var(--font-ui-small);
+	line-height: 1.5;
 	color: var(--text-muted);
-}
-
-/* Controls -------------------------------------------------------------- */
-
-.im-grid {
-	display: grid;
-	gap: var(--size-4-2);
-}
-
-.im-grid-2 {
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.im-grid-3 {
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.im-dimmed {
-	opacity: 0.5;
-}
-
-.im-panel label {
-	display: flex;
-	flex-direction: column;
-	gap: var(--size-2-1);
-	font-size: var(--font-ui-smaller);
-	color: var(--text-muted);
-}
-
-.im-panel input[type='number'] {
-	width: 100%;
-	font-size: var(--font-ui-small);
-}
-
-.im-panel input[type='range'] {
-	width: 100%;
-}
-
-.im-check,
-.im-check-row {
-	display: flex;
-	align-items: center;
-	gap: var(--size-4-2);
-}
-
-.im-check {
-	flex-direction: row;
-}
-
-.im-check input[type='checkbox'] {
-	margin: 0;
-}
-
-.im-chips {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--size-2-2);
-}
-
-.im-chips-fill button {
-	flex: 1;
-}
-
-.im-panel button {
-	padding: var(--size-2-2) var(--size-4-2);
-	font-size: var(--font-ui-smaller);
-}
-
-.im-panel button.im-selected {
-	background-color: var(--interactive-accent);
-	color: var(--text-on-accent);
 }
 
 .im-link {
 	padding: 0;
+	height: auto;
 	background: none;
 	box-shadow: none;
+	border: 0;
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
-	text-decoration: underline;
-	cursor: pointer;
+	cursor: var(--cursor);
 }
 
 .im-link:hover {
-	color: var(--text-normal);
 	background: none;
+	color: var(--text-normal);
+	text-decoration: underline;
 }
+
+/* Fields: the caption always sits above its input, never beside a checkbox. */
+
+.im-field {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	min-width: 0;
+}
+
+.im-field > span {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.im-field input[type='number'] {
+	width: 100%;
+	height: 28px;
+	padding: 0 var(--size-4-2);
+	font-size: var(--font-ui-small);
+	font-variant-numeric: tabular-nums;
+}
+
+.im-grid-2 {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--size-4-2);
+}
+
+/* Width and height, with the aspect lock between them. */
+.im-dims {
+	display: grid;
+	grid-template-columns: 1fr auto 1fr;
+	align-items: end;
+	gap: var(--size-2-2);
+}
+
+.im-lock {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	box-shadow: none;
+	color: var(--text-faint);
+	cursor: var(--cursor);
+}
+
+.im-lock.is-on {
+	color: var(--text-accent);
+}
+
+.im-lock svg {
+	width: 14px;
+	height: 14px;
+}
+
+/* Segmented controls ----------------------------------------------------- */
+
+.im-seg {
+	display: grid;
+	gap: var(--size-2-2);
+}
+
+.im-seg-2 {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.im-seg-3 {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.im-seg-4 {
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.im-seg-5 {
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.im-seg button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	width: 100%;
+	height: 26px;
+	padding: 0 2px;
+	box-shadow: none;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	white-space: nowrap;
+	cursor: var(--cursor);
+}
+
+.im-seg button:hover:not(:disabled) {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.im-seg button.is-active {
+	border-color: var(--interactive-accent);
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.im-seg button svg {
+	width: 13px;
+	height: 13px;
+}
+
+/* Switch ---------------------------------------------------------------- */
+
+.im-switch {
+	position: relative;
+	flex-shrink: 0;
+	width: 32px;
+	height: 18px;
+	padding: 0;
+	border: 0;
+	border-radius: 9px;
+	box-shadow: none;
+	background-color: var(--background-modifier-border-hover);
+	cursor: var(--cursor);
+	transition: background-color 120ms ease;
+}
+
+.im-switch.is-on {
+	background-color: var(--interactive-accent);
+}
+
+.im-switch-thumb {
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background-color: var(--background-primary);
+	transition: transform 120ms ease;
+}
+
+.im-switch.is-on .im-switch-thumb {
+	transform: translateX(14px);
+}
+
+/* Sliders --------------------------------------------------------------- */
+
+.im-panel input[type='range'] {
+	width: 100%;
+	margin: 0;
+}
+
+.im-scale {
+	display: flex;
+	justify-content: space-between;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+
+/* File list ------------------------------------------------------------- */
 
 .im-files {
 	display: flex;
 	flex-direction: column;
-	gap: var(--size-2-1);
+	gap: 2px;
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -185,10 +337,29 @@
 
 .im-files button {
 	width: 100%;
+	height: 26px;
+	padding: 0 var(--size-4-2);
+	box-shadow: none;
+	border: 0;
+	background: none;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
 	text-align: left;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	cursor: var(--cursor);
+}
+
+.im-files button:hover:not(:disabled) {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.im-files button.is-active {
+	background-color: var(--background-modifier-active-hover);
+	color: var(--text-normal);
+	font-weight: var(--font-medium);
 }
 
 /* Preview --------------------------------------------------------------- */
@@ -274,7 +445,7 @@
 	gap: var(--size-2-2);
 	padding: var(--size-4-12) var(--size-4-8);
 	border: 1px dashed var(--background-modifier-border);
-	border-radius: var(--radius-s);
+	border-radius: var(--radius-m);
 	color: var(--text-muted);
 	font-size: var(--font-ui-medium);
 }
@@ -302,6 +473,7 @@
 .im-status {
 	flex: 1;
 	min-width: 0;
+	font-variant-numeric: tabular-nums;
 }
 
 .im-error {

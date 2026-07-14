@@ -15,16 +15,27 @@
 <section class="im-panel">
 	<header class="im-panel-head">
 		<h2>Compression</h2>
-		<span class="im-hint">Quality {quality}</span>
+		<span class="im-badge">{lossless ? '—' : quality}</span>
 	</header>
 
-	<input type="range" min="1" max="100" bind:value={quality} disabled={lossless} />
+	<div class="im-panel-body" class:im-off={lossless}>
+		<input
+			type="range"
+			min="1"
+			max="100"
+			aria-label="Quality"
+			bind:value={quality}
+			disabled={lossless}
+		/>
+		<div class="im-scale">
+			<span>Smaller</span>
+			<span>Sharper</span>
+		</div>
+	</div>
 
-	<p class="im-hint">
-		{#if lossless}
+	{#if lossless}
+		<p class="im-hint im-panel-note">
 			{format.toUpperCase()} is lossless, so quality has no effect.
-		{:else}
-			Lower values give smaller files at the cost of detail.
-		{/if}
-	</p>
+		</p>
+	{/if}
 </section>

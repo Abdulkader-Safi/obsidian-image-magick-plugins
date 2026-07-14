@@ -65,47 +65,55 @@ export class PresetPickerModal extends SuggestModal<OptimizePreset> {
 	}
 }
 
-/** Confirm the output path before writing. Seeded with `photo.optimized.webp`. */
-export class SavePathModal extends Modal {
-	private path: string;
+/**
+ * Names the output file. The folder is never asked for: output always lands
+ * beside the source, so only the name is editable. Seeded with
+ * `photo.optimized.webp`.
+ */
+export class SaveNameModal extends Modal {
+	private name: string;
 
 	constructor(
 		app: App,
-		defaultPath: string,
-		private onSubmit: (path: string) => void,
+		private folder: string,
+		defaultName: string,
+		private onSubmit: (name: string) => void,
 	) {
 		super(app);
-		this.path = defaultPath;
+		this.name = defaultName;
 	}
 
 	onOpen(): void {
 		const { contentEl } = this;
 		this.setTitle('Save optimized image');
 
-		let warning: HTMLElement;
-
-		const updateWarning = () => {
-			const exists =
-				this.app.vault.getAbstractFileByPath(this.path) instanceof TFile;
-			warning.setText(exists ? 'A file at this path will be overwritten.' : '');
-		};
-
-		new Setting(contentEl).setName('Vault path').addText((text) => {
-			text
-				.setValue(this.path)
-				.onChange((value) => {
-					this.path = value.trim();
-					updateWarning();
-				})
-				.inputEl.addEventListener('keydown', (e) => {
-					if (e.key === 'Enter') {
-						this.submit();
-					}
-				});
-			text.inputEl.select();
+		contentEl.createDiv({
+			cls: 'im-suggest-desc',
+			text: `Saving into ${this.folder || 'the vault root'}`,
 		});
 
-		warning = contentEl.createDiv({ cls: 'im-warning' });
+		const warning = contentEl.createDiv({ cls: 'im-warning' });
+		const updateWarning = () => {
+			const path = this.folder ? `${this.folder}/${this.name}` : this.name;
+			const exists = this.app.vault.getAbstractFileByPath(path) instanceof TFile;
+			warning.setText(exists ? `${this.name} exists and will be replaced.` : '');
+		};
+
+		new Setting(contentEl).setName('File name').addText((text) => {
+			text.setValue(this.name).onChange((value) => {
+				this.name = value.trim();
+				updateWarning();
+			});
+			text.inputEl.addEventListener('keydown', (e) => {
+				if (e.key === 'Enter') {
+					this.submit();
+				}
+			});
+			// Preselect the stem so typing replaces the name but keeps the extension.
+			const dot = this.name.lastIndexOf('.');
+			text.inputEl.setSelectionRange(0, dot === -1 ? this.name.length : dot);
+			window.setTimeout(() => text.inputEl.focus(), 0);
+		});
 		updateWarning();
 
 		new Setting(contentEl).addButton((btn) =>
@@ -117,11 +125,11 @@ export class SavePathModal extends Modal {
 	}
 
 	private submit(): void {
-		if (!this.path) {
+		if (!this.name) {
 			return;
 		}
 		this.close();
-		this.onSubmit(this.path);
+		this.onSubmit(this.name);
 	}
 
 	onClose(): void {

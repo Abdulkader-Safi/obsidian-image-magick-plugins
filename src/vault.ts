@@ -15,6 +15,16 @@ export async function readBytes(app: App, file: TFile): Promise<Uint8Array> {
 	return new Uint8Array(await app.vault.readBinary(file));
 }
 
+/** The folder holding `path`, or '' for a file at the vault root. */
+export function parentPath(path: string): string {
+	const slash = path.lastIndexOf('/');
+	return slash === -1 ? '' : path.slice(0, slash);
+}
+
+export function joinPath(folder: string, name: string): string {
+	return folder ? `${folder}/${name}` : name;
+}
+
 /**
  * Writes `bytes` to a vault path, creating missing parent folders and replacing
  * an existing file. Returns the written file.

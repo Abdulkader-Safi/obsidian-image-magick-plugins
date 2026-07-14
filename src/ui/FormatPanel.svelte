@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { LOSSLESS_FORMATS } from '../formats';
 	import type { ImageFormat } from '../formats';
 
 	interface Props {
@@ -22,16 +23,25 @@
 </script>
 
 <section class="im-panel">
-	<h2>Format</h2>
-	<div class="im-grid im-grid-3">
-		{#each formats as f (f.value)}
-			<button
-				type="button"
-				class:im-selected={format === f.value}
-				onclick={() => (format = f.value)}
-			>
-				{f.label}
-			</button>
-		{/each}
+	<header class="im-panel-head">
+		<h2>Format</h2>
+		<span class="im-badge">
+			{LOSSLESS_FORMATS.has(format) ? 'lossless' : 'lossy'}
+		</span>
+	</header>
+
+	<div class="im-panel-body">
+		<div class="im-seg im-seg-4">
+			{#each formats as f (f.value)}
+				<button
+					type="button"
+					class:is-active={format === f.value}
+					aria-pressed={format === f.value}
+					onclick={() => (format = f.value)}
+				>
+					{f.label}
+				</button>
+			{/each}
+		</div>
 	</div>
 </section>

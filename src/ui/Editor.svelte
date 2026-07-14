@@ -11,9 +11,10 @@
 	import type { ImageFormat } from '../formats';
 	import { guessFormat } from '../formats';
 	import { presetOutputPath } from '../presets';
-	import { PresetNameModal, SavePathModal } from '../modals';
-	import { readBytes, writeBytes } from '../vault';
+	import { PresetNameModal, SaveNameModal } from '../modals';
+	import { joinPath, parentPath, readBytes, writeBytes } from '../vault';
 	import type ImageMagickPlugin from '../main';
+	import { icon } from './icon';
 	import PreviewCanvas from './PreviewCanvas.svelte';
 	import ResizePanel from './ResizePanel.svelte';
 	import CropPanel from './CropPanel.svelte';
@@ -188,9 +189,8 @@
 		return typeof err === 'string' ? err : fallback;
 	}
 
-	/** Default output path: `<stem>.optimized.<format>` beside the source. */
-	function defaultOutputPath(state: EditorState): string {
-		const from = source?.path ?? source?.name ?? 'image';
+	/** `<stem>.optimized.<format>`, derived from a file name or path. */
+	function outputNameFor(from: string, state: EditorState): string {
 		return presetOutputPath(from, {
 			name: '',
 			format: state.format,
@@ -207,9 +207,17 @@
 			return;
 		}
 		const state = $state.snapshot(editorState) as EditorState;
-		new SavePathModal(app, defaultOutputPath(state), (path) => {
-			void save(state, path);
-		}).open();
+		// Output always lands beside the source, so the modal only asks for a name.
+		// A dropped file has no vault path, so it goes to the vault root.
+		const folder = source.path ? parentPath(source.path) : '';
+		new SaveNameModal(
+			app,
+			folder,
+			outputNameFor(source.name, state),
+			(fileName) => {
+				void save(state, joinPath(folder, fileName));
+			},
+		).open();
 	}
 
 	async function save(state: EditorState, path: string): Promise<void> {
@@ -240,7 +248,7 @@
 				saveStatus = `Saving ${i + 1}/${files.length}: ${file.name}`;
 				try {
 					const bytes = await encodeBytes(await readBytes(app, file), state);
-					await writeBytes(app, defaultOutputPathFor(file.path, state), bytes);
+					await writeBytes(app, outputNameFor(file.path, state), bytes);
 					saved++;
 				} catch (err) {
 					failed++;
@@ -256,18 +264,6 @@
 				? `Optimized ${saved} image${saved === 1 ? '' : 's'}.`
 				: `Optimized ${saved}, ${failed} failed. See the console for details.`,
 		);
-	}
-
-	function defaultOutputPathFor(path: string, state: EditorState): string {
-		return presetOutputPath(path, {
-			name: '',
-			format: state.format,
-			quality: state.quality,
-			maxLongEdge: null,
-			stripMetadata: false,
-			output: 'suffix',
-			suffix: '.optimized',
-		});
 	}
 
 	function handleSavePreset(): void {
@@ -332,8 +328,21 @@
 		<aside class="im-sidebar">
 			{#if source}
 				<div class="im-source">
-					<span class="im-source-name">{source.name}</span>
-					<span class="im-dim">{source.width}×{source.height}</span>
+					<div class="im-source-name" title={source.path ?? source.name}>
+						{source.name}
+					</div>
+					<div class="im-source-meta">
+						<span>{source.width} × {source.height}</span>
+						{#if previewMeta}
+							<span class="im-arrow" use:icon={'arrow-right'}></span>
+							<span class="im-source-out">
+								{previewMeta.width} × {previewMeta.height}
+								{#if previewMeta.sizeKb > 0}
+									· {previewMeta.sizeKb} KB
+								{/if}
+							</span>
+						{/if}
+					</div>
 				</div>
 
 				{#if files.length > 1}
@@ -389,6 +398,14 @@
 					? ` · ${previewMeta.sizeKb} KB`
 					: ''}
 			{/if}
+		</span>
+		<span class="im-credit">
+		Donate on
+			<a
+				href="https://ko-fi.com/abdulkadersafi"
+				target="_blank"
+				rel="noopener noreferrer">Ko-fi</a
+			>
 		</span>
 		<span class="im-credit">
 			developed by
