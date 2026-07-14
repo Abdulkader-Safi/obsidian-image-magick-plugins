@@ -1,9 +1,9 @@
 {
-	"id": "svelte-plugin-template",
-	"name": "Svelte Plugin Template",
+	"id": "image-magick",
+	"name": "ImageMagick",
 	"version": "1.0.0",
 	"minAppVersion": "1.7.2",
-	"description": "A starter template for building Obsidian plugins with Svelte, Tailwind, and shadcn-svelte.",
+	"description": "Resize, crop, rotate, compress and convert images in your vault, powered by ImageMagick.",
 	"author": "Abdulkader Safi",
 	"authorUrl": "https://abdulkadersafi.com",
 	"fundingUrl": "https://ko-fi.com/abdulkadersafi",

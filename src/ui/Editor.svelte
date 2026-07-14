@@ -1,0 +1,426 @@
+<script lang="ts">
+	import { Notice, TFile } from 'obsidian';
+	import { onDestroy } from 'svelte';
+	import { ImageService, encodeBytes, getWritableFormats } from '../engine';
+	import type {
+		CropRect,
+		EditorState,
+		ResizeSpec,
+		SourceInfo,
+	} from '../engine';
+	import type { ImageFormat } from '../formats';
+	import { guessFormat } from '../formats';
+	import { presetOutputPath } from '../presets';
+	import { PresetNameModal, SavePathModal } from '../modals';
+	import { readBytes, writeBytes } from '../vault';
+	import type ImageMagickPlugin from '../main';
+	import PreviewCanvas from './PreviewCanvas.svelte';
+	import ResizePanel from './ResizePanel.svelte';
+	import CropPanel from './CropPanel.svelte';
+	import RotatePanel from './RotatePanel.svelte';
+	import FormatPanel from './FormatPanel.svelte';
+	import CompressPanel from './CompressPanel.svelte';
+	import FilesPanel from './FilesPanel.svelte';
+
+	interface Props {
+		plugin: ImageMagickPlugin;
+		files: TFile[];
+	}
+
+	let { plugin, files }: Props = $props();
+
+	// The view remounts this component for every new file set, so reading the
+	// props once at setup is exactly the intent.
+	// svelte-ignore state_referenced_locally
+	const app = plugin.app;
+	// The engine runs right here — no host round-trip, unlike the VS Code build.
+	const service = new ImageService();
+
+	let source = $state<SourceInfo | null>(null);
+	let availableFormats = $state<ImageFormat[]>([
+		'jpg',
+		'png',
+		'webp',
+		'gif',
+		'tiff',
+		'bmp',
+	]);
+	let previewDataUrl = $state<string | null>(null);
+	let previewMeta = $state<{
+		width: number;
+		height: number;
+		sizeKb: number;
+	} | null>(null);
+	let errorMessage = $state<string | null>(null);
+	let busyPreview = $state(false);
+	let saving = $state(false);
+	let saveStatus = $state<string | null>(null);
+	let activeIndex = $state(0);
+
+	// Pipeline state.
+	let crop = $state<CropRect | null>(null);
+	let rotate = $state(0);
+	let flipH = $state(false);
+	let flipV = $state(false);
+	let resize = $state<ResizeSpec | null>(null);
+	let format = $state<ImageFormat>('png');
+	let quality = $state(85);
+
+	let hasLoadedOnce = false;
+	let previewTimer: ReturnType<typeof setTimeout> | null = null;
+	// Monotonic token so a slow preview render can't clobber a newer one.
+	let previewSeq = 0;
+
+	const editorState = $derived<EditorState>({
+		crop,
+		rotate,
+		flipH,
+		flipV,
+		resize,
+		format,
+		quality,
+	});
+
+	void initFormats();
+	// svelte-ignore state_referenced_locally
+	const firstFile = files[0];
+	if (firstFile) {
+		void loadFile(firstFile, 0);
+	}
+
+	// Re-render whenever the pipeline or the source changes, debounced so
+	// dragging a slider doesn't thrash the engine.
+	$effect(() => {
+		void editorState;
+		void source;
+		if (!source) {
+			return;
+		}
+		if (previewTimer) {
+			clearTimeout(previewTimer);
+		}
+		const snapshot = $state.snapshot(editorState) as EditorState;
+		previewTimer = setTimeout(() => {
+			void renderPreview(snapshot);
+		}, 150);
+	});
+
+	onDestroy(() => {
+		if (previewTimer) {
+			clearTimeout(previewTimer);
+		}
+	});
+
+	async function initFormats(): Promise<void> {
+		try {
+			const writable = await getWritableFormats();
+			availableFormats = Array.from(writable);
+			if (!availableFormats.includes(format)) {
+				format = availableFormats[0] ?? 'png';
+			}
+		} catch {
+			// getWritableFormats already falls back to the universal set.
+		}
+	}
+
+	async function loadFile(file: TFile, index: number): Promise<void> {
+		try {
+			await loadSource(await readBytes(app, file), file.path, file.name, index);
+		} catch (err) {
+			errorMessage = describeError(err, `Could not open ${file.name}`);
+		}
+	}
+
+	async function loadSource(
+		bytes: Uint8Array,
+		path: string | null,
+		name: string,
+		index: number,
+	): Promise<void> {
+		try {
+			source = await service.loadFromBytes(bytes, path, name);
+			activeIndex = index;
+			previewMeta = { width: source.width, height: source.height, sizeKb: 0 };
+			errorMessage = null;
+			// The first image of a session seeds the target format; switching
+			// between files afterwards keeps whatever pipeline the user set up.
+			if (!hasLoadedOnce) {
+				hasLoadedOnce = true;
+				const guessed = guessFormat(source.format);
+				format = availableFormats.includes(guessed) ? guessed : format;
+			}
+			// The $effect on `source` renders the preview.
+		} catch (err) {
+			errorMessage = describeError(err, `Could not open ${name}`);
+		}
+	}
+
+	async function renderPreview(state: EditorState): Promise<void> {
+		const seq = ++previewSeq;
+		busyPreview = true;
+		try {
+			const result = await service.renderPreview(state);
+			if (seq !== previewSeq) {
+				return; // a newer render superseded this one
+			}
+			previewDataUrl = result.previewDataUrl;
+			previewMeta = {
+				width: result.width,
+				height: result.height,
+				sizeKb: result.sizeKb,
+			};
+			errorMessage = null;
+		} catch (err) {
+			if (seq === previewSeq) {
+				errorMessage = describeError(err, 'Failed to render preview');
+			}
+		} finally {
+			if (seq === previewSeq) {
+				busyPreview = false;
+			}
+		}
+	}
+
+	function describeError(err: unknown, fallback: string): string {
+		if (err instanceof Error) {
+			return err.message || fallback;
+		}
+		return typeof err === 'string' ? err : fallback;
+	}
+
+	/** Default output path: `<stem>.optimized.<format>` beside the source. */
+	function defaultOutputPath(state: EditorState): string {
+		const from = source?.path ?? source?.name ?? 'image';
+		return presetOutputPath(from, {
+			name: '',
+			format: state.format,
+			quality: state.quality,
+			maxLongEdge: null,
+			stripMetadata: false,
+			output: 'suffix',
+			suffix: '.optimized',
+		});
+	}
+
+	function handleSave(): void {
+		if (!source || saving) {
+			return;
+		}
+		const state = $state.snapshot(editorState) as EditorState;
+		new SavePathModal(app, defaultOutputPath(state), (path) => {
+			void save(state, path);
+		}).open();
+	}
+
+	async function save(state: EditorState, path: string): Promise<void> {
+		saving = true;
+		saveStatus = 'Encoding…';
+		try {
+			const bytes = await service.encode(state);
+			const file = await writeBytes(app, path, bytes);
+			new Notice(`Saved ${file.path} (${Math.round(bytes.byteLength / 1024)} KB)`);
+		} catch (err) {
+			errorMessage = describeError(err, 'Failed to save image');
+		} finally {
+			saving = false;
+			saveStatus = null;
+		}
+	}
+
+	async function handleSaveAll(): Promise<void> {
+		if (files.length < 2 || saving) {
+			return;
+		}
+		const state = $state.snapshot(editorState) as EditorState;
+		saving = true;
+		let saved = 0;
+		let failed = 0;
+		try {
+			for (const [i, file] of files.entries()) {
+				saveStatus = `Saving ${i + 1}/${files.length}: ${file.name}`;
+				try {
+					const bytes = await encodeBytes(await readBytes(app, file), state);
+					await writeBytes(app, defaultOutputPathFor(file.path, state), bytes);
+					saved++;
+				} catch (err) {
+					failed++;
+					console.error(`[ImageMagick] failed on ${file.path}`, err);
+				}
+			}
+		} finally {
+			saving = false;
+			saveStatus = null;
+		}
+		new Notice(
+			failed === 0
+				? `Optimized ${saved} image${saved === 1 ? '' : 's'}.`
+				: `Optimized ${saved}, ${failed} failed. See the console for details.`,
+		);
+	}
+
+	function defaultOutputPathFor(path: string, state: EditorState): string {
+		return presetOutputPath(path, {
+			name: '',
+			format: state.format,
+			quality: state.quality,
+			maxLongEdge: null,
+			stripMetadata: false,
+			output: 'suffix',
+			suffix: '.optimized',
+		});
+	}
+
+	function handleSavePreset(): void {
+		const state = $state.snapshot(editorState) as EditorState;
+		const maxLongEdge = state.resize
+			? Math.max(
+					Math.round(state.resize.width),
+					Math.round(state.resize.height),
+				)
+			: null;
+		const summary = maxLongEdge
+			? `${state.format} · quality ${state.quality} · max ${maxLongEdge}px`
+			: `${state.format} · quality ${state.quality}`;
+		new PresetNameModal(app, summary, (name) => {
+			void plugin.addPreset({
+				name,
+				format: state.format,
+				quality: state.quality,
+				maxLongEdge,
+				stripMetadata: false,
+				output: 'suffix',
+				suffix: '.optimized',
+			});
+		}).open();
+	}
+
+	function handleReset(): void {
+		crop = null;
+		rotate = 0;
+		flipH = false;
+		flipV = false;
+		resize = null;
+		quality = 85;
+		if (source) {
+			format = guessFormat(source.format);
+		}
+		errorMessage = null;
+	}
+
+	function handleSelectFile(index: number): void {
+		const file = files[index];
+		if (saving || index === activeIndex || !file) {
+			return;
+		}
+		void loadFile(file, index);
+	}
+
+	function handleDropFile(file: File): void {
+		// A dropped file may live outside the vault, so it becomes a buffer-only
+		// source: editable, but Save asks where in the vault it should land.
+		file
+			.arrayBuffer()
+			.then((buf) => loadSource(new Uint8Array(buf), null, file.name, 0))
+			.catch((err: unknown) => {
+				errorMessage = describeError(err, `Could not open ${file.name}`);
+			});
+	}
+</script>
+
+<div class="im-root">
+	<div class="im-body">
+		<aside class="im-sidebar">
+			{#if source}
+				<div class="im-source">
+					<span class="im-source-name">{source.name}</span>
+					<span class="im-dim">{source.width}×{source.height}</span>
+				</div>
+
+				{#if files.length > 1}
+					<FilesPanel
+						{files}
+						{activeIndex}
+						disabled={saving}
+						onSelect={handleSelectFile}
+					/>
+				{/if}
+				<ResizePanel
+					bind:resize
+					sourceWidth={source.width}
+					sourceHeight={source.height}
+				/>
+				<CropPanel
+					bind:crop
+					sourceWidth={source.width}
+					sourceHeight={source.height}
+				/>
+				<RotatePanel bind:rotate bind:flipH bind:flipV />
+				<FormatPanel bind:format available={availableFormats} />
+				<CompressPanel bind:quality {format} />
+			{:else}
+				<p class="im-empty">
+					Drop an image into the preview, or run <b>ImageMagick: Open image</b> from
+					the command palette.
+				</p>
+			{/if}
+		</aside>
+
+		<main class="im-preview">
+			<PreviewCanvas
+				{previewDataUrl}
+				{source}
+				bind:crop
+				busy={busyPreview}
+				onDrop={handleDropFile}
+			/>
+		</main>
+	</div>
+
+	{#if errorMessage}
+		<div class="im-error">{errorMessage}</div>
+	{/if}
+
+	<footer class="im-actions">
+		<span class="im-status">
+			{#if saving && saveStatus}
+				{saveStatus}
+			{:else if previewMeta}
+				{previewMeta.width}×{previewMeta.height}{previewMeta.sizeKb > 0
+					? ` · ${previewMeta.sizeKb} KB`
+					: ''}
+			{/if}
+		</span>
+		<span class="im-credit">
+			developed by
+			<a
+				href="https://abdulkadersafi.com/?utm_source=obsidian&utm_medium=plugin&utm_campaign=imagemagick"
+				target="_blank"
+				rel="noopener noreferrer">Abdulkader Safi</a
+			>
+		</span>
+		<button type="button" onclick={handleSavePreset} disabled={!source || saving}>
+			Save as preset
+		</button>
+		<button type="button" onclick={handleReset} disabled={!source || saving}>
+			Reset
+		</button>
+		<button
+			type="button"
+			class="mod-cta"
+			onclick={handleSave}
+			disabled={!source || saving}
+		>
+			{saving && files.length < 2 ? 'Saving…' : 'Save…'}
+		</button>
+		{#if files.length > 1}
+			<button
+				type="button"
+				class="mod-cta"
+				onclick={handleSaveAll}
+				disabled={!source || saving}
+			>
+				{saving ? 'Saving…' : `Save all (${files.length})`}
+			</button>
+		{/if}
+	</footer>
+</div>

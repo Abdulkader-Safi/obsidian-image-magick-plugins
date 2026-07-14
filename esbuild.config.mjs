@@ -1,6 +1,8 @@
 import esbuild from 'esbuild';
 import process from 'process';
+import fs from 'node:fs';
 import { builtinModules } from 'node:module';
+import { createRequire } from 'node:module';
 import esbuildSvelte from 'esbuild-svelte';
 import { sveltePreprocess } from 'svelte-preprocess';
 
@@ -11,6 +13,18 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = process.argv[2] === 'production';
+
+// The ImageMagick engine's JS is bundled into main.js; the 14 MB wasm module
+// ships next to it and is read at runtime through the vault adapter. Inlining
+// it as base64 would bloat main.js by a third again for no gain.
+function copyMagickWasm() {
+	const require = createRequire(import.meta.url);
+	const src = require.resolve('@imagemagick/magick-wasm/magick.wasm');
+	fs.copyFileSync(src, 'magick.wasm');
+	console.log('[build] copied magick.wasm');
+}
+
+copyMagickWasm();
 
 const context = await esbuild.context({
 	banner: {

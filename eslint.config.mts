@@ -7,6 +7,9 @@ export default tseslint.config(
 	globalIgnores([
 		'node_modules',
 		'dist',
+		// Plain JS, outside the tsconfig project, so the typed obsidianmd rules
+		// cannot run on it.
+		'test',
 		'esbuild.config.mjs',
 		'version-bump.mjs',
 		'versions.json',
