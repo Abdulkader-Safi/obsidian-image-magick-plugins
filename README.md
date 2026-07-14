@@ -6,6 +6,8 @@ Powered by [magick-wasm](https://github.com/dlemstra/magick-wasm), the WebAssemb
 
 By [Abdulkader Safi](https://abdulkadersafi.com).
 
+![Plugin screenshot](screenshot.png)
+
 ## Features
 
 - **Resize**: width and height inputs, lock aspect ratio, quick percentage presets.
