@@ -5,7 +5,9 @@
 		previewDataUrl: string | null;
 		source: SourceInfo | null;
 		crop: CropRect | null;
-		busy: boolean;
+		rotate: number;
+		flipH: boolean;
+		flipV: boolean;
 		onDrop: (file: File) => void;
 	}
 
@@ -13,7 +15,9 @@
 		previewDataUrl,
 		source,
 		crop = $bindable(),
-		busy,
+		rotate,
+		flipH,
+		flipV,
 		onDrop,
 	}: Props = $props();
 
@@ -30,30 +34,54 @@
 				orig: CropRect;
 		  };
 
-	/** Hit-test radius (in display px) around handles. */
+	/** Hit-test radius (in image-local px) around handles. */
 	const HANDLE_HIT = 10;
 
 	let imgEl = $state<HTMLImageElement | null>(null);
 	let containerEl = $state<HTMLDivElement | null>(null);
 	let dragOver = $state(false);
-	let imgRect = $state<DOMRect | null>(null);
 	let dragMode = $state<DragMode | null>(null);
 	let hoverCursor = $state('crosshair');
 
-	// Recompute the image's bounding rect on layout changes so display↔source
-	// coordinate mapping stays accurate.
+	/**
+	 * The image's UNTRANSFORMED layout box, and where its centre sits on screen.
+	 *
+	 * Rotation and flipping happen in CSS on the wrapper (see `transform` below),
+	 * which is what keeps the angle slider smooth. Everything in this component
+	 * therefore works in the image's own unrotated coordinate space, and pointer
+	 * positions are mapped back into it by `toLocal`. The crop rectangle lives in
+	 * source pixels, which the pipeline crops BEFORE it rotates, so unrotated
+	 * space is the correct frame to reason in.
+	 */
+	let box = $state<{ w: number; h: number; cx: number; cy: number } | null>(null);
+	/** Container size, used to shrink the rotated image back inside its frame. */
+	let frame = $state<{ w: number; h: number } | null>(null);
+
 	$effect(() => {
-		if (!imgEl) {
-			imgRect = null;
+		const img = imgEl;
+		const container = containerEl;
+		if (!img || !container) {
+			box = null;
+			frame = null;
 			return;
 		}
-		const el = imgEl;
 		const update = () => {
-			imgRect = el.getBoundingClientRect();
+			// getBoundingClientRect() returns the TRANSFORMED box, but rotating and
+			// scaling about the centre leaves the centre where it was, so its centre
+			// is still the right anchor. The untransformed size comes from layout.
+			const rect = img.getBoundingClientRect();
+			box = {
+				w: img.offsetWidth,
+				h: img.offsetHeight,
+				cx: rect.left + rect.width / 2,
+				cy: rect.top + rect.height / 2,
+			};
+			frame = { w: container.clientWidth, h: container.clientHeight };
 		};
 		update();
 		const ro = new ResizeObserver(update);
-		ro.observe(el);
+		ro.observe(img);
+		ro.observe(container);
 		window.addEventListener('scroll', update, true);
 		window.addEventListener('resize', update);
 		return () => {
@@ -63,28 +91,74 @@
 		};
 	});
 
+	const radians = $derived((rotate * Math.PI) / 180);
+
+	/**
+	 * How much to shrink the rotated image so its corners stay inside the frame.
+	 * A 45°-rotated wide image needs noticeably more room than an upright one.
+	 */
+	const fit = $derived.by(() => {
+		if (!box || !frame || box.w === 0 || box.h === 0) {
+			return 1;
+		}
+		const cos = Math.abs(Math.cos(radians));
+		const sin = Math.abs(Math.sin(radians));
+		const bboxW = box.w * cos + box.h * sin;
+		const bboxH = box.w * sin + box.h * cos;
+		if (bboxW === 0 || bboxH === 0) {
+			return 1;
+		}
+		return Math.min(1, frame.w / bboxW, frame.h / bboxH);
+	});
+
+	// Rightmost transform applies first: flip the pixels, then rotate, then fit.
+	const transform = $derived(
+		`scale(${fit}) rotate(${rotate}deg) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1})`,
+	);
+
+	/** Viewport point → the image's own unrotated coordinate space. */
+	function toLocal(clientX: number, clientY: number): { x: number; y: number } | null {
+		if (!box) {
+			return null;
+		}
+		let dx = (clientX - box.cx) / fit;
+		let dy = (clientY - box.cy) / fit;
+
+		// Undo the rotation, then the flips, in the reverse of the CSS order.
+		const cos = Math.cos(-radians);
+		const sin = Math.sin(-radians);
+		[dx, dy] = [dx * cos - dy * sin, dx * sin + dy * cos];
+		if (flipH) {
+			dx = -dx;
+		}
+		if (flipV) {
+			dy = -dy;
+		}
+		return { x: dx + box.w / 2, y: dy + box.h / 2 };
+	}
+
 	function clampInt(n: number, min: number, max: number): number {
 		return Math.max(min, Math.min(max, Math.round(n)));
 	}
 
-	function displayToSource(dx: number, dy: number): { x: number; y: number } | null {
-		if (!source || !imgRect || imgRect.width === 0 || imgRect.height === 0) {
+	function localToSource(x: number, y: number): { x: number; y: number } | null {
+		if (!source || !box || box.w === 0 || box.h === 0) {
 			return null;
 		}
 		return {
-			x: clampInt((dx * source.width) / imgRect.width, 0, source.width),
-			y: clampInt((dy * source.height) / imgRect.height, 0, source.height),
+			x: clampInt((x * source.width) / box.w, 0, source.width),
+			y: clampInt((y * source.height) / box.h, 0, source.height),
 		};
 	}
 
-	function sourceToDisplay(
-		rect: CropRect,
-	): { left: number; top: number; width: number; height: number } | null {
-		if (!source || !imgRect || imgRect.width === 0 || imgRect.height === 0) {
+	type Display = { left: number; top: number; width: number; height: number };
+
+	function sourceToDisplay(rect: CropRect): Display | null {
+		if (!source || !box || box.w === 0 || box.h === 0) {
 			return null;
 		}
-		const ratioX = imgRect.width / source.width;
-		const ratioY = imgRect.height / source.height;
+		const ratioX = box.w / source.width;
+		const ratioY = box.h / source.height;
 		return {
 			left: rect.x * ratioX,
 			top: rect.y * ratioY,
@@ -93,15 +167,16 @@
 		};
 	}
 
-	type Display = { left: number; top: number; width: number; height: number };
-
 	function hitTestHandle(x: number, y: number, d: Display): Corner | null {
 		const right = d.left + d.width;
 		const bottom = d.top + d.height;
 		const cx = d.left + d.width / 2;
 		const cy = d.top + d.height / 2;
+		// The image may be scaled down to fit; keep the grab radius constant on
+		// screen by widening it in local space by the same factor.
+		const slop = HANDLE_HIT / fit;
 		const near = (px: number, py: number) =>
-			Math.abs(x - px) <= HANDLE_HIT && Math.abs(y - py) <= HANDLE_HIT;
+			Math.abs(x - px) <= slop && Math.abs(y - py) <= slop;
 		if (near(d.left, d.top)) return 'nw';
 		if (near(right, d.top)) return 'ne';
 		if (near(d.left, bottom)) return 'sw';
@@ -137,45 +212,48 @@
 	}
 
 	function handlePointerDown(event: PointerEvent) {
-		if (!source || !imgRect || event.button !== 0) {
+		if (!source || event.button !== 0) {
+			return;
+		}
+		const p = toLocal(event.clientX, event.clientY);
+		if (!p) {
 			return;
 		}
 		event.preventDefault();
 		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-		const x = event.clientX - imgRect.left;
-		const y = event.clientY - imgRect.top;
 
 		// With a crop already set, the pointer moves or resizes it when it lands on
 		// the box. Anywhere else starts a fresh selection.
 		if (crop) {
 			const display = sourceToDisplay(crop);
 			if (display) {
-				const handle = hitTestHandle(x, y, display);
+				const handle = hitTestHandle(p.x, p.y, display);
 				if (handle) {
 					dragMode = {
 						kind: 'resize',
 						corner: handle,
-						startX: x,
-						startY: y,
+						startX: p.x,
+						startY: p.y,
 						orig: { ...crop },
 					};
 					return;
 				}
-				if (isInsideCrop(x, y, display)) {
-					dragMode = { kind: 'move', startX: x, startY: y, orig: { ...crop } };
+				if (isInsideCrop(p.x, p.y, display)) {
+					dragMode = { kind: 'move', startX: p.x, startY: p.y, orig: { ...crop } };
 					return;
 				}
 			}
 		}
-		dragMode = { kind: 'create', startX: x, startY: y, endX: x, endY: y };
+		dragMode = { kind: 'create', startX: p.x, startY: p.y, endX: p.x, endY: p.y };
 	}
 
 	function handlePointerMove(event: PointerEvent) {
-		if (!imgRect) {
+		const raw = toLocal(event.clientX, event.clientY);
+		if (!raw || !box) {
 			return;
 		}
-		const x = Math.max(0, Math.min(imgRect.width, event.clientX - imgRect.left));
-		const y = Math.max(0, Math.min(imgRect.height, event.clientY - imgRect.top));
+		const x = Math.max(0, Math.min(box.w, raw.x));
+		const y = Math.max(0, Math.min(box.h, raw.y));
 
 		if (!dragMode) {
 			// Hover cursor advertises the handles and the move region.
@@ -222,8 +300,8 @@
 			}
 			const minX = Math.min(sel.startX, sel.endX);
 			const minY = Math.min(sel.startY, sel.endY);
-			const a = displayToSource(minX, minY);
-			const b = displayToSource(minX + dx, minY + dy);
+			const a = localToSource(minX, minY);
+			const b = localToSource(minX + dx, minY + dy);
 			if (!a || !b) {
 				return;
 			}
@@ -240,11 +318,11 @@
 		y: number,
 		mode: Extract<DragMode, { kind: 'move' }>,
 	) {
-		if (!source || !imgRect) {
+		if (!source || !box) {
 			return;
 		}
-		const dxSrc = ((x - mode.startX) * source.width) / imgRect.width;
-		const dySrc = ((y - mode.startY) * source.height) / imgRect.height;
+		const dxSrc = ((x - mode.startX) * source.width) / box.w;
+		const dySrc = ((y - mode.startY) * source.height) / box.h;
 		crop = {
 			x: clampInt(mode.orig.x + dxSrc, 0, source.width - mode.orig.w),
 			y: clampInt(mode.orig.y + dySrc, 0, source.height - mode.orig.h),
@@ -258,11 +336,11 @@
 		y: number,
 		mode: Extract<DragMode, { kind: 'resize' }>,
 	) {
-		if (!source || !imgRect) {
+		if (!source || !box) {
 			return;
 		}
-		const dxSrc = ((x - mode.startX) * source.width) / imgRect.width;
-		const dySrc = ((y - mode.startY) * source.height) / imgRect.height;
+		const dxSrc = ((x - mode.startX) * source.width) / box.w;
+		const dySrc = ((y - mode.startY) * source.height) / box.h;
 
 		let { x: nx, y: ny, w: nw, h: nh } = mode.orig;
 		const right = mode.orig.x + mode.orig.w;
@@ -371,7 +449,12 @@
 	aria-label="Image preview"
 >
 	{#if previewDataUrl && source}
-		<div class="im-canvas-inner">
+		<!--
+			Rotation and flipping live here, in CSS, not in the engine. The crop
+			overlays sit inside the same transformed wrapper, so they ride along with
+			the image and keep pointing at the same pixels.
+		-->
+		<div class="im-canvas-inner" style="transform:{transform}">
 			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 			<img
 				bind:this={imgEl}
@@ -393,10 +476,6 @@
 			{/if}
 			{#if dragRectStyle}
 				<div class="im-crop-draft" style={dragRectStyle}></div>
-			{/if}
-
-			{#if busy}
-				<div class="im-busy">Updating preview…</div>
 			{/if}
 		</div>
 	{:else}

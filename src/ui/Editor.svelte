@@ -53,7 +53,8 @@
 		sizeKb: number;
 	} | null>(null);
 	let errorMessage = $state<string | null>(null);
-	let busyPreview = $state(false);
+	/** True while the full-resolution size measurement is pending. */
+	let measuring = $state(false);
 	let saving = $state(false);
 	let saveStatus = $state<string | null>(null);
 	let activeIndex = $state(0);
@@ -69,8 +70,10 @@
 
 	let hasLoadedOnce = false;
 	let previewTimer: ReturnType<typeof setTimeout> | null = null;
-	// Monotonic token so a slow preview render can't clobber a newer one.
+	let measureTimer: ReturnType<typeof setTimeout> | null = null;
+	// Monotonic tokens so a slow render can't clobber a newer one.
 	let previewSeq = 0;
+	let measureSeq = 0;
 
 	const editorState = $derived<EditorState>({
 		crop,
@@ -89,10 +92,14 @@
 		void loadFile(firstFile, 0);
 	}
 
-	// Re-render whenever the pipeline or the source changes, debounced so
-	// dragging a slider doesn't thrash the engine.
+	// The engine is only asked for a new preview image when `resize` changes.
+	//
+	// Rotate and flip are done in CSS by PreviewCanvas, and format and quality
+	// never altered this image in the first place (the preview is always PNG), so
+	// none of those drags reach ImageMagick at all. That is what keeps the sliders
+	// smooth: the engine runs on a synchronous thread shared with the UI.
 	$effect(() => {
-		void editorState;
+		const spec = resize ? { ...resize } : null;
 		void source;
 		if (!source) {
 			return;
@@ -100,15 +107,32 @@
 		if (previewTimer) {
 			clearTimeout(previewTimer);
 		}
+		previewTimer = setTimeout(() => void renderPreview(spec), 60);
+	});
+
+	// The output size, by contrast, does depend on every setting, and getting it
+	// right means encoding the full-resolution image. That is the slowest thing
+	// the plugin does, so it waits until the user actually stops moving.
+	$effect(() => {
+		void editorState;
+		void source;
+		if (!source) {
+			return;
+		}
 		const snapshot = $state.snapshot(editorState) as EditorState;
-		previewTimer = setTimeout(() => {
-			void renderPreview(snapshot);
-		}, 150);
+		if (measureTimer) {
+			clearTimeout(measureTimer);
+		}
+		measuring = true;
+		measureTimer = setTimeout(() => void measure(snapshot), 400);
 	});
 
 	onDestroy(() => {
 		if (previewTimer) {
 			clearTimeout(previewTimer);
+		}
+		if (measureTimer) {
+			clearTimeout(measureTimer);
 		}
 	});
 
@@ -156,28 +180,37 @@
 		}
 	}
 
-	async function renderPreview(state: EditorState): Promise<void> {
+	async function renderPreview(spec: ResizeSpec | null): Promise<void> {
 		const seq = ++previewSeq;
-		busyPreview = true;
 		try {
-			const result = await service.renderPreview(state);
+			const url = await service.renderPreview(spec);
 			if (seq !== previewSeq) {
 				return; // a newer render superseded this one
 			}
-			previewDataUrl = result.previewDataUrl;
-			previewMeta = {
-				width: result.width,
-				height: result.height,
-				sizeKb: result.sizeKb,
-			};
+			previewDataUrl = url;
 			errorMessage = null;
 		} catch (err) {
 			if (seq === previewSeq) {
 				errorMessage = describeError(err, 'Failed to render preview');
 			}
+		}
+	}
+
+	async function measure(state: EditorState): Promise<void> {
+		const seq = ++measureSeq;
+		try {
+			const result = await service.measure(state);
+			if (seq !== measureSeq) {
+				return;
+			}
+			previewMeta = result;
+		} catch (err) {
+			if (seq === measureSeq) {
+				errorMessage = describeError(err, 'Failed to measure output');
+			}
 		} finally {
-			if (seq === previewSeq) {
-				busyPreview = false;
+			if (seq === measureSeq) {
+				measuring = false;
 			}
 		}
 	}
@@ -335,7 +368,7 @@
 						<span>{source.width} × {source.height}</span>
 						{#if previewMeta}
 							<span class="im-arrow" use:icon={'arrow-right'}></span>
-							<span class="im-source-out">
+							<span class="im-source-out" class:im-stale={measuring}>
 								{previewMeta.width} × {previewMeta.height}
 								{#if previewMeta.sizeKb > 0}
 									· {previewMeta.sizeKb} KB
@@ -378,8 +411,10 @@
 			<PreviewCanvas
 				{previewDataUrl}
 				{source}
+				{rotate}
+				{flipH}
+				{flipV}
 				bind:crop
-				busy={busyPreview}
 				onDrop={handleDropFile}
 			/>
 		</main>

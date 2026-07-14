@@ -130,8 +130,8 @@ export async function getWritableFormats(): Promise<Set<ImageFormat>> {
 	return set;
 }
 
+/** What a save would actually produce. */
 export interface PreviewResult {
-	previewDataUrl: string;
 	width: number;
 	height: number;
 	sizeKb: number;
@@ -241,9 +241,18 @@ export async function encodePreset(
 /**
  * Wraps ImageMagick for a single edit session: holds the source bytes and
  * re-applies the declarative EditorState for each preview and encode.
+ *
+ * ImageMagick runs synchronously on the renderer's only thread, so anything it
+ * does during a slider drag freezes the UI. That is why previews never touch
+ * the full-resolution source: `previewBytes` holds a downscaled copy, decoded
+ * once per file, and every interactive render works off that. Measuring the
+ * real output size is the expensive part and is deliberately a separate call
+ * (see `measure`), so callers can run it only once the user stops moving.
  */
 export class ImageService {
 	private bytes: Uint8Array | null = null;
+	/** Downscaled PNG of the source, the basis for every interactive preview. */
+	private previewBytes: Uint8Array | null = null;
 	private sourceInfo: SourceInfo | null = null;
 
 	async loadFromBytes(
@@ -262,28 +271,74 @@ export class ImageService {
 			height: info.height,
 			format: String(info.format),
 		};
+
+		// Pay the full-resolution decode once, here, instead of on every keystroke.
+		this.previewBytes = withImage(this.bytes, (image) => {
+			// `>` shrinks only if larger than the box, preserving aspect ratio.
+			image.resize(
+				new MagickGeometry(`${PREVIEW_LONG_EDGE}x${PREVIEW_LONG_EDGE}>`),
+			);
+			return image.write(MagickFormat.Png, (d) => Uint8Array.from(d));
+		});
+
 		return this.sourceInfo;
 	}
 
 	/**
-	 * Renders a downscaled PNG preview of the current pipeline output.
+	 * Renders the visual preview. Depends on `resize` and nothing else.
 	 *
-	 * The visual preview SKIPS the crop step so the user can see the full frame
-	 * and reposition the crop box on it. The reported dimensions and size come
-	 * from the full pipeline (crop included), so they describe what a save will
-	 * actually produce. Always PNG, so preview colours are exact.
+	 * Four of the seven pipeline steps deliberately do NOT belong here:
+	 *
+	 *  - rotate and flip are pure visual transforms, so the preview element does
+	 *    them in CSS for free. Asking ImageMagick to rotate a 1600px image costs
+	 *    ~260 ms, which is what made dragging the angle slider stutter.
+	 *  - format and quality never affected this image anyway: the preview is
+	 *    always written as PNG so its colours are exact. They only change the
+	 *    output size, which `measure` reports.
+	 *  - crop is skipped so the user can see the whole frame and drag the crop
+	 *    box around on it.
+	 *
+	 * What is left runs against the downscaled copy, never the full-size source.
 	 */
-	async renderPreview(state: EditorState): Promise<PreviewResult> {
+	async renderPreview(resize: ResizeSpec | null): Promise<string> {
+		await ensureInitialized();
+		if (!this.previewBytes) {
+			throw new Error('No image loaded');
+		}
+		return withImage(this.previewBytes, (image) => {
+			if (resize) {
+				// Scale the target into preview space: same shape, a fraction of the
+				// pixels. Upscaling the small copy back to the real target would undo
+				// the whole point of having it.
+				const longest = Math.max(resize.width, resize.height);
+				const scale = Math.min(1, PREVIEW_LONG_EDGE / Math.max(1, longest));
+				const w = Math.max(1, Math.round(resize.width * scale));
+				const h = Math.max(1, Math.round(resize.height * scale));
+				image.resize(new MagickGeometry(`${w}x${h}!`));
+			}
+			image.resize(
+				new MagickGeometry(`${PREVIEW_LONG_EDGE}x${PREVIEW_LONG_EDGE}>`),
+			);
+			const base64 = image.write(MagickFormat.Png, (d) => bytesToBase64(d));
+			return `data:image/png;base64,${base64}`;
+		});
+	}
+
+	/**
+	 * The dimensions and byte size a save would really produce, crop included.
+	 *
+	 * This encodes the full-resolution image, which is the slowest thing the
+	 * plugin does. Call it when the user pauses, never mid-drag.
+	 */
+	async measure(state: EditorState): Promise<PreviewResult> {
 		await ensureInitialized();
 		if (!this.bytes) {
 			throw new Error('No image loaded');
 		}
-		const bytes = this.bytes;
-
-		const { outWidth, outHeight, sizeKb } = withImage(bytes, (image) => {
+		return withImage(this.bytes, (image) => {
 			applyPipeline(image, state, {});
-			const w = image.width;
-			const h = image.height;
+			const width = image.width;
+			const height = image.height;
 			if (!LOSSLESS_FORMATS.has(state.format)) {
 				image.quality = clampQuality(state.quality);
 			}
@@ -291,20 +346,8 @@ export class ImageService {
 				FORMAT_TO_MAGICK[state.format],
 				(d) => d.byteLength,
 			);
-			return { outWidth: w, outHeight: h, sizeKb: Math.round(len / 1024) };
+			return { width, height, sizeKb: Math.round(len / 1024) };
 		});
-
-		const previewDataUrl = withImage(bytes, (image) => {
-			applyPipeline(image, state, { skipCrop: true });
-			// `>` shrinks only if larger than the box, preserving aspect ratio.
-			image.resize(
-				new MagickGeometry(`${PREVIEW_LONG_EDGE}x${PREVIEW_LONG_EDGE}>`),
-			);
-			const base64 = image.write(MagickFormat.Png, (d) => bytesToBase64(d));
-			return `data:image/png;base64,${base64}`;
-		});
-
-		return { previewDataUrl, width: outWidth, height: outHeight, sizeKb };
 	}
 
 	async encode(state: EditorState): Promise<Uint8Array> {
