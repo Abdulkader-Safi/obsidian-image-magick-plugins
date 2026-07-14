@@ -1,7 +1,7 @@
 {
 	"id": "image-magick",
 	"name": "ImageMagick",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "1.7.2",
 	"description": "Resize, crop, rotate, compress and convert images in your vault, powered by ImageMagick.",
 	"author": "Abdulkader Safi",

@@ -136,8 +136,7 @@ export default class ImageMagickPlugin extends Plugin {
 		}
 		menu.addItem((item) =>
 			item
-				// eslint-disable-next-line obsidianmd/ui/sentence-case -- ImageMagick is a proper noun.
-				.setTitle('Optimize with ImageMagick')
+				.setTitle('Optimize image')
 				.setIcon('image')
 				.onClick(() => void this.openEditor(images)),
 		);

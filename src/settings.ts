@@ -101,7 +101,6 @@ export class ImageMagickSettingTab extends PluginSettingTab {
 					slider
 						.setLimits(1, 100, 1)
 						.setValue(preset.quality)
-						.setDynamicTooltip()
 						.onChange(async (value) => {
 							preset.quality = value;
 							await this.plugin.saveSettings();
@@ -130,8 +129,7 @@ export class ImageMagickSettingTab extends PluginSettingTab {
 
 		new Setting(box)
 			.setName('Strip metadata')
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- EXIF and GPS are acronyms.
-			.setDesc('Drop EXIF, GPS, and colour profiles.')
+			.setDesc('Drop camera, location, and colour profile data.')
 			.addToggle((toggle) =>
 				toggle.setValue(preset.stripMetadata).onChange(async (value) => {
 					preset.stripMetadata = value;

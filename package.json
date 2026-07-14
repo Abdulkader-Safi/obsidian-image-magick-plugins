@@ -1,11 +1,11 @@
 {
 	"name": "image-magick",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Resize, crop, rotate, compress and convert images inside Obsidian, powered by ImageMagick.",
 	"author": "Abdulkader Safi <safi.abdulkader@gmail.com> (https://abdulkadersafi.com)",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Abdulkader-Safi/obsidian-plugins-ImageMagick"
+		"url": "https://github.com/Abdulkader-Safi/obsidian-image-magick-plugins"
 	},
 	"main": "main.js",
 	"type": "module",
