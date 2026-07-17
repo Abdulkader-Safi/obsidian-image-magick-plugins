@@ -5,11 +5,15 @@ import type { ImageFormat } from './formats';
 import type { OptimizePreset } from './engine';
 import type ImageMagickPlugin from './main';
 
-const FORMAT_OPTIONS: Record<string, string> = {
+/**
+ * Keyed by ImageFormat rather than string, so a format leaving the union is a
+ * compile error here instead of a dropdown entry that saves a preset the
+ * validator then silently drops.
+ */
+const FORMAT_OPTIONS: Record<ImageFormat, string> = {
 	jpg: 'JPEG',
 	png: 'PNG',
 	webp: 'WebP',
-	avif: 'AVIF',
 	gif: 'GIF',
 	tiff: 'TIFF',
 	bmp: 'BMP',

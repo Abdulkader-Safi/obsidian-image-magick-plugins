@@ -481,7 +481,7 @@
 	{:else}
 		<div class="im-dropzone">
 			<span>Drop an image here</span>
-			<span class="im-hint">PNG · JPG · WebP · AVIF · GIF · TIFF · BMP</span>
+			<span class="im-hint">PNG · JPG · WebP · GIF · TIFF · BMP</span>
 		</div>
 	{/if}
 </div>

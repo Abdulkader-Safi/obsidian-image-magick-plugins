@@ -13,7 +13,6 @@
 		{ value: 'jpg', label: 'JPEG' },
 		{ value: 'png', label: 'PNG' },
 		{ value: 'webp', label: 'WebP' },
-		{ value: 'avif', label: 'AVIF' },
 		{ value: 'gif', label: 'GIF' },
 		{ value: 'tiff', label: 'TIFF' },
 		{ value: 'bmp', label: 'BMP' },
