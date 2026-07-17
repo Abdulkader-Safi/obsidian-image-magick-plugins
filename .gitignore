@@ -20,7 +20,3 @@ data.json
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
-
-# ImageMagick wasm, copied from node_modules at build time.
-magick.wasm
-build
