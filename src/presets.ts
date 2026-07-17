@@ -8,7 +8,6 @@ const VALID_FORMATS: ReadonlySet<ImageFormat> = new Set<ImageFormat>([
 	'jpg',
 	'png',
 	'webp',
-	'avif',
 	'gif',
 	'tiff',
 	'bmp',

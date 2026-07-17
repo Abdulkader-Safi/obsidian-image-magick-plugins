@@ -16,7 +16,7 @@ Open an issue and describe the problem you are trying to solve rather than the s
 npm install
 npm run dev     # rebuild main.js on save
 npm run build   # typecheck, then production bundle
-npm test        # encodes a real image through the wasm
+npm test        # runs real images through the edit pipeline
 npm run lint
 ```
 
@@ -36,6 +36,8 @@ npm test
 
 ## Things worth knowing about this codebase
 
-- The ImageMagick engine is WebAssembly, gzipped and inlined into `main.js` at build time by `scripts/prepare-wasm.mjs`. Obsidian only ever downloads `main.js`, `manifest.json` and `styles.css`, so the engine cannot ship as a separate file.
-- ImageMagick runs synchronously on the renderer's only thread, so anything it does during a drag freezes the UI. Rotate and flip are therefore done in CSS, and the expensive full-resolution size measurement is debounced. Keep new work off the interactive path.
+- The engine is [safi-image](https://github.com/Abdulkader-Safi/safi-image), pure TypeScript, bundled into `main.js` like any other dependency. Obsidian only ever downloads `main.js`, `manifest.json` and `styles.css`, so nothing can ship as a separate file and nothing may be fetched at runtime.
+- `src/engine.ts` is the only file that imports safi-image. Everything else works against `EditorState` and `OptimizePreset`, so the library stays swappable and the UI has nothing to say about codecs.
+- safi-image's PNG codec imports `node:zlib`, which exists on Obsidian desktop and not on mobile. `scripts/node-shims.mjs` maps it onto fflate at build time and turns any other `node:` import into a build error. Marking node builtins external instead would produce a plugin that works everywhere you would test it and breaks on a phone.
+- The library is synchronous work behind an async API, so it runs on the renderer's only thread and anything it does during a drag freezes the UI. Rotate and flip are therefore done in CSS, previews run against a downscaled copy, and the full-resolution size measurement is debounced. Keep new work off the interactive path.
 - Styling is plain CSS in `styles.css`, written against Obsidian's own CSS variables so the plugin follows the user's theme. There is no CSS build step, and no Tailwind.

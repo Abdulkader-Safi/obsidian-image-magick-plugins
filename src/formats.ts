@@ -1,23 +1,30 @@
-import { MagickFormat } from '@imagemagick/magick-wasm';
+import type { Format } from 'safi-image';
 
-export type ImageFormat =
-	| 'jpg'
-	| 'png'
-	| 'webp'
-	| 'avif'
-	| 'gif'
-	| 'tiff'
-	| 'bmp';
+/**
+ * AVIF and HEIC are gone with ImageMagick: both are patent-encumbered codecs
+ * that safi-image does not carry, and no pure-TypeScript decoder for them is
+ * worth 7 MB of wasm. Everything else the plugin ever offered survives.
+ */
+export type ImageFormat = 'jpg' | 'png' | 'webp' | 'gif' | 'tiff' | 'bmp';
 
 /** Every ImageFormat value is also its file extension, so there is no map for that. */
-export const FORMAT_TO_MAGICK: Record<ImageFormat, MagickFormat> = {
-	jpg: MagickFormat.Jpeg,
-	png: MagickFormat.Png,
-	webp: MagickFormat.WebP,
-	avif: MagickFormat.Avif,
-	gif: MagickFormat.Gif,
-	tiff: MagickFormat.Tiff,
-	bmp: MagickFormat.Bmp,
+export const FORMAT_TO_SIMG: Record<ImageFormat, Format> = {
+	jpg: 'jpeg',
+	png: 'png',
+	webp: 'webp',
+	gif: 'gif',
+	tiff: 'tiff',
+	bmp: 'bmp',
+};
+
+/** The inverse, for reporting what a decoded source actually was. */
+export const SIMG_TO_FORMAT: Record<Format, ImageFormat> = {
+	jpeg: 'jpg',
+	png: 'png',
+	webp: 'webp',
+	gif: 'gif',
+	tiff: 'tiff',
+	bmp: 'bmp',
 };
 
 /** Formats that ignore the quality setting. */
@@ -28,7 +35,11 @@ export const LOSSLESS_FORMATS: ReadonlySet<ImageFormat> = new Set<ImageFormat>([
 	'tiff',
 ]);
 
-/** Vault extensions the plugin offers to open. Superset of what it can write. */
+/**
+ * Vault extensions the plugin offers to open. Now exactly what safi-image can
+ * decode: offering a file the editor would only fail to open is worse than not
+ * listing it.
+ */
 export const IMAGE_EXTENSIONS = [
 	'png',
 	'jpg',
@@ -38,9 +49,6 @@ export const IMAGE_EXTENSIONS = [
 	'bmp',
 	'tiff',
 	'tif',
-	'avif',
-	'heic',
-	'heif',
 ];
 
 export function clampQuality(q: unknown): number {
@@ -48,7 +56,7 @@ export function clampQuality(q: unknown): number {
 	return Math.max(1, Math.min(100, Math.round(n)));
 }
 
-/** Maps a source file extension or ImageMagick format name onto an ImageFormat. */
+/** Maps a source file extension or safi-image format name onto an ImageFormat. */
 export function guessFormat(raw: string): ImageFormat {
 	switch (raw.toLowerCase()) {
 		case 'jpeg':
@@ -56,8 +64,6 @@ export function guessFormat(raw: string): ImageFormat {
 			return 'jpg';
 		case 'webp':
 			return 'webp';
-		case 'avif':
-			return 'avif';
 		case 'gif':
 			return 'gif';
 		case 'tiff':

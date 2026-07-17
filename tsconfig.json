@@ -8,7 +8,9 @@
 		"noImplicitReturns": true,
 		"noFallthroughCasesInSwitch": true,
 		"noUncheckedIndexedAccess": true,
-		"moduleResolution": "node",
+		// Matches how esbuild resolves: "node" predates the `exports` map that
+		// safi-image ships its types behind.
+		"moduleResolution": "bundler",
 		"isolatedModules": true,
 		"verbatimModuleSyntax": true,
 		"skipLibCheck": true,

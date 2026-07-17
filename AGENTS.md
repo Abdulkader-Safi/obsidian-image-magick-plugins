@@ -2,12 +2,13 @@
 
 ## Project overview
 
-- An image optimizer for Obsidian (resize, crop, rotate, compress, convert), built on Svelte 5 and the ImageMagick wasm build.
+- An image optimizer for Obsidian (resize, crop, rotate, compress, convert), built on Svelte 5 and safi-image.
 - Target: Obsidian Community Plugin (TypeScript + Svelte → bundled JavaScript).
 - Entry point: `src/main.ts` compiled to `main.js` and loaded by Obsidian.
 - UI lives in `src/ui/` as Svelte components mounted into an Obsidian `ItemView`.
 - Styling is hand-written plain CSS in `styles.css`, on Obsidian's CSS variables. No Tailwind, no CSS build step.
-- `src/engine.ts` wraps `@imagemagick/magick-wasm`. The wasm is gzipped by `scripts/prepare-wasm.mjs` and inlined into `main.js` as base64, because Obsidian only ships `main.js`, `manifest.json` and `styles.css` to users.
+- `src/engine.ts` wraps [safi-image](https://github.com/Abdulkader-Safi/safi-image), a pure TypeScript image library. It is the only file that talks to it: everything else works against `EditorState` and `OptimizePreset`.
+- safi-image's PNG codec imports `node:zlib`, which Obsidian mobile does not have. `scripts/node-shims.mjs` resolves it to `src/zlib-shim.ts` (fflate) at build time, and makes any unshimmed `node:` import a build error. Do not mark node builtins external here: that ships a plugin which works on desktop and throws on mobile.
 - Required release artifacts: `main.js`, `manifest.json`, and `styles.css`.
 
 ## Environment & tooling
