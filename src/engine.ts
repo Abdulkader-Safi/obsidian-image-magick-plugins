@@ -155,7 +155,14 @@ export async function getWritableFormats(): Promise<Set<ImageFormat>> {
 		// Probing failed; the fallback below covers it.
 	}
 	if (set.size === 0) {
-		set = new Set<ImageFormat>(['jpg', 'png', 'webp', 'gif', 'tiff', 'bmp']);
+		set = new Set<ImageFormat>([
+			'jpg',
+			'png',
+			'webp',
+			'gif',
+			'tiff',
+			'bmp',
+		]);
 	}
 	cachedWritableFormats = set;
 	return set;
@@ -197,13 +204,17 @@ export async function encodePreset(
  * quality is irrelevant and only its speed matters.
  */
 function toDataUrl(image: RawImage): string {
-	// activeDocument, not document: the editor can be dragged into a popout window.
-	const canvas = activeDocument.createElement('canvas');
+	// Obsidian's own helper rather than createElement. The canvas is never
+	// attached to a document: it is a scratch surface for pixels, so which
+	// window owns it does not matter, only that it is detached and disposable.
+	const canvas = createEl('canvas');
 	canvas.width = image.width;
 	canvas.height = image.height;
 	const ctx = canvas.getContext('2d');
 	if (!ctx) {
-		throw new Error('Could not get a 2D canvas context to draw the preview.');
+		throw new Error(
+			'Could not get a 2D canvas context to draw the preview.',
+		);
 	}
 	// ImageData wants a Uint8ClampedArray backed by an ArrayBuffer specifically,
 	// while RawImage's is typed against ArrayBufferLike. safi-image allocates

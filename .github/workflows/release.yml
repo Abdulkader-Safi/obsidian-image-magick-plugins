@@ -31,12 +31,23 @@ jobs:
               run: |
                   [ -f styles.css ] && echo "exists=true" >> "$GITHUB_OUTPUT" || echo "exists=false" >> "$GITHUB_OUTPUT"
 
-            - name: Attest build provenance
-              uses: actions/attest@v4
+            # One attestation per asset, rather than one covering both.
+            #
+            # A multi-subject attestation is valid and the GitHub CLI verifies it
+            # either way, but Obsidian's scorecard reported 2.0.0's attestation as
+            # failing verification for both assets, and a statement listing a
+            # second file is the one difference a per-artifact check would trip
+            # over. Splitting costs a step and removes the ambiguity.
+            - name: Attest main.js
+              uses: actions/attest-build-provenance@v4
               with:
-                  subject-path: |
-                      main.js
-                      ${{ steps.styles.outputs.exists == 'true' && 'styles.css' || '' }}
+                  subject-path: main.js
+
+            - name: Attest styles.css
+              if: steps.styles.outputs.exists == 'true'
+              uses: actions/attest-build-provenance@v4
+              with:
+                  subject-path: styles.css
 
             - name: Create release
               env:

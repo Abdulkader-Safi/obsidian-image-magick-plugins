@@ -1,4 +1,9 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import {
+	PluginSettingTab,
+	type App,
+	type SettingDefinition,
+	type SettingDefinitionItem,
+} from 'obsidian';
 import { DEFAULT_PRESETS, NEW_PRESET, describePreset } from './presets';
 import { LOSSLESS_FORMATS } from './formats';
 import type { ImageFormat } from './formats';
@@ -19,6 +24,32 @@ const FORMAT_OPTIONS: Record<ImageFormat, string> = {
 	bmp: 'BMP',
 };
 
+/** The fields of a preset a control can address. */
+type Field = keyof OptimizePreset;
+
+/**
+ * Control keys address one field of one preset, as `<index>.<field>`.
+ *
+ * The declarative API hands `getControlValue`/`setControlValue` a flat string,
+ * while the data is an array of objects, so the index has to travel in the key.
+ * Parsing is centralised here rather than repeated at each call site.
+ */
+function keyFor(index: number, field: Field): string {
+	return `${index}.${field}`;
+}
+
+function parseKey(key: string): { index: number; field: Field } | null {
+	const dot = key.indexOf('.');
+	if (dot === -1) {
+		return null;
+	}
+	const index = Number(key.slice(0, dot));
+	if (!Number.isInteger(index) || index < 0) {
+		return null;
+	}
+	return { index, field: key.slice(dot + 1) as Field };
+}
+
 export class ImageMagickSettingTab extends PluginSettingTab {
 	constructor(
 		app: App,
@@ -27,150 +58,202 @@ export class ImageMagickSettingTab extends PluginSettingTab {
 		super(app, plugin);
 	}
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
-
+	/**
+	 * The settings UI, as data. Obsidian renders it, re-renders it when
+	 * `update()` says the data changed, and indexes it so the presets turn up in
+	 * settings search.
+	 *
+	 * The old imperative `display()` re-rendered itself by calling `display()`
+	 * again after every mutation. That method is deprecated as of 1.13, and the
+	 * re-render is now the framework's job: hence `minAppVersion` 1.13.0.
+	 */
+	getSettingDefinitions(): SettingDefinitionItem[] {
 		const presets = this.plugin.settings.presets;
-
-		new Setting(containerEl)
-			.setName('Presets')
-			.setDesc(
-				presets.length === 0
-					? `No saved presets, so the built-in ones are offered: ${DEFAULT_PRESETS.map((p) => p.name).join(', ')}.`
-					: 'Offered by "Optimize with preset".',
-			)
-			.addButton((btn) =>
-				btn
-					.setButtonText('Add preset')
-					.setCta()
-					.onClick(async () => {
-						presets.push({ ...NEW_PRESET });
-						await this.plugin.saveSettings();
-						this.display();
-					}),
-			);
-
-		presets.forEach((preset, index) => {
-			this.renderPreset(containerEl, preset, index);
-		});
+		return [
+			{
+				type: 'list',
+				heading: 'Presets',
+				emptyState: `No saved presets, so the built-in ones are offered: ${DEFAULT_PRESETS.map((p) => p.name).join(', ')}.`,
+				addItem: {
+					name: 'Add preset',
+					action: () => {
+						void this.addPreset();
+					},
+				},
+				onDelete: (index: number) => {
+					void this.deletePreset(index);
+				},
+				items: presets.flatMap((preset, index) =>
+					this.presetItems(preset, index),
+				),
+			},
+		];
 	}
 
-	private renderPreset(
-		containerEl: HTMLElement,
+	/** One preset's rows. Mirrors the pipeline order the editor applies. */
+	private presetItems(
 		preset: OptimizePreset,
 		index: number,
-	): void {
-		const box = containerEl.createDiv({ cls: 'im-preset' });
+	): SettingDefinition[] {
+		const items: SettingDefinition[] = [
+			{
+				name: preset.name || 'Untitled preset',
+				desc: describePreset(preset),
+				// Searchable by what the preset does, not just its name.
+				aliases: [preset.format, preset.output],
+				control: {
+					type: 'text',
+					key: keyFor(index, 'name'),
+					placeholder: NEW_PRESET.name,
+				},
+			},
+			{
+				name: 'Format',
+				control: {
+					type: 'dropdown',
+					key: keyFor(index, 'format'),
+					options: FORMAT_OPTIONS,
+				},
+			},
+		];
 
-		new Setting(box)
-			.setName(preset.name)
-			.setDesc(describePreset(preset))
-			.setHeading()
-			.addExtraButton((btn) =>
-				btn
-					.setIcon('trash')
-					.setTooltip('Delete preset')
-					.onClick(async () => {
-						this.plugin.settings.presets.splice(index, 1);
-						await this.plugin.saveSettings();
-						this.display();
-					}),
-			);
+		// Quality means nothing to a lossless format, so the row is not rendered
+		// for one. `visible` is re-evaluated on each render, so switching the
+		// format above shows or hides this without a hand-rolled re-render.
+		items.push({
+			name: 'Quality',
+			desc: '1-100. Lower is smaller and lossier.',
+			visible: () => !LOSSLESS_FORMATS.has(preset.format),
+			control: {
+				type: 'slider',
+				key: keyFor(index, 'quality'),
+				min: 1,
+				max: 100,
+				step: 1,
+			},
+		});
 
-		new Setting(box).setName('Name').addText((text) =>
-			text.setValue(preset.name).onChange(async (value) => {
-				preset.name = value;
-				await this.plugin.saveSettings();
-			}),
-		);
-
-		new Setting(box).setName('Format').addDropdown((drop) =>
-			drop
-				.addOptions(FORMAT_OPTIONS)
-				.setValue(preset.format)
-				.onChange(async (value) => {
-					preset.format = value as ImageFormat;
-					await this.plugin.saveSettings();
-					// The quality row only exists for lossy formats.
-					this.display();
-				}),
-		);
-
-		if (!LOSSLESS_FORMATS.has(preset.format)) {
-			new Setting(box)
-				.setName('Quality')
-				.setDesc('1-100. Lower is smaller and lossier.')
-				.addSlider((slider) =>
-					slider
-						.setLimits(1, 100, 1)
-						.setValue(preset.quality)
-						.onChange(async (value) => {
-							preset.quality = value;
-							await this.plugin.saveSettings();
-						}),
-				);
-		}
-
-		new Setting(box)
-			.setName('Max long edge')
-			.setDesc(
-				'Shrink the longest edge to this many pixels. Empty keeps the source size.',
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder('1600')
-					.setValue(preset.maxLongEdge ? String(preset.maxLongEdge) : '')
-					.onChange(async (value) => {
-						const n = Number(value);
-						preset.maxLongEdge =
-							value.trim() !== '' && Number.isFinite(n) && n > 0
-								? Math.round(n)
-								: null;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(box)
-			.setName('Strip metadata')
-			.setDesc('Drop camera, location, and colour profile data.')
-			.addToggle((toggle) =>
-				toggle.setValue(preset.stripMetadata).onChange(async (value) => {
-					preset.stripMetadata = value;
-					await this.plugin.saveSettings();
-				}),
-			);
-
-		new Setting(box)
-			.setName('Output')
-			.setDesc('Where the optimized file lands.')
-			.addDropdown((drop) =>
-				drop
-					.addOptions({
+		items.push(
+			{
+				name: 'Max long edge',
+				desc: 'Shrink the longest edge to this many pixels. Empty keeps the source size.',
+				control: {
+					type: 'text',
+					key: keyFor(index, 'maxLongEdge'),
+					placeholder: '1600',
+				},
+			},
+			{
+				name: 'Strip metadata',
+				desc: 'Drop camera, location, and colour profile data.',
+				control: {
+					type: 'toggle',
+					key: keyFor(index, 'stripMetadata'),
+				},
+			},
+			{
+				name: 'Output',
+				desc: 'Where the optimized file lands.',
+				control: {
+					type: 'dropdown',
+					key: keyFor(index, 'output'),
+					options: {
 						suffix: 'Save a copy',
 						overwrite: 'Use the source name',
-					})
-					.setValue(preset.output)
-					.onChange(async (value) => {
-						preset.output = value === 'overwrite' ? 'overwrite' : 'suffix';
-						await this.plugin.saveSettings();
-						this.display();
-					}),
-			);
+					},
+				},
+			},
+			{
+				name: 'Suffix',
+				desc: 'Added before the extension, e.g. photo.optimized.webp',
+				visible: () => preset.output === 'suffix',
+				control: {
+					type: 'text',
+					key: keyFor(index, 'suffix'),
+					placeholder: NEW_PRESET.suffix,
+				},
+			},
+		);
 
-		if (preset.output === 'suffix') {
-			new Setting(box)
-				.setName('Suffix')
-				.setDesc('Added before the extension, e.g. photo.optimized.webp')
-				.addText((text) =>
-					text
-						.setPlaceholder('.optimized')
-						.setValue(preset.suffix)
-						.onChange(async (value) => {
-							preset.suffix = value || '.optimized';
-							await this.plugin.saveSettings();
-						}),
-				);
+		return items;
+	}
+
+	private async addPreset(): Promise<void> {
+		this.plugin.settings.presets.push({ ...NEW_PRESET });
+		await this.plugin.saveSettings();
+		// Tells Obsidian the definitions changed, so it re-reads and re-renders.
+		this.update();
+	}
+
+	private async deletePreset(index: number): Promise<void> {
+		this.plugin.settings.presets.splice(index, 1);
+		await this.plugin.saveSettings();
+		this.update();
+	}
+
+	/**
+	 * Reads one control's value. The default implementation reads a flat
+	 * property off `plugin.settings`, which cannot reach into the presets array.
+	 *
+	 * `maxLongEdge` is a number-or-null behind a text box, so it is presented as
+	 * a string here and parsed back in `setControlValue`. A number control would
+	 * be the obvious fit, but there would be no way to express "no limit".
+	 */
+	getControlValue(key: string): unknown {
+		const parsed = parseKey(key);
+		const preset = parsed && this.plugin.settings.presets[parsed.index];
+		if (!parsed || !preset) {
+			return undefined;
 		}
+		if (parsed.field === 'maxLongEdge') {
+			return preset.maxLongEdge === null
+				? ''
+				: String(preset.maxLongEdge);
+		}
+		return preset[parsed.field];
+	}
+
+	/** Writes one control's value back, validating exactly as the old rows did. */
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		const parsed = parseKey(key);
+		const preset = parsed && this.plugin.settings.presets[parsed.index];
+		if (!parsed || !preset) {
+			return;
+		}
+
+		switch (parsed.field) {
+			case 'name':
+				preset.name = String(value);
+				break;
+			case 'format':
+				preset.format = value as ImageFormat;
+				break;
+			case 'quality':
+				preset.quality = Number(value);
+				break;
+			case 'maxLongEdge': {
+				const text = String(value).trim();
+				const n = Number(text);
+				preset.maxLongEdge =
+					text !== '' && Number.isFinite(n) && n > 0
+						? Math.round(n)
+						: null;
+				break;
+			}
+			case 'stripMetadata':
+				preset.stripMetadata = value === true;
+				break;
+			case 'output':
+				preset.output = value === 'overwrite' ? 'overwrite' : 'suffix';
+				break;
+			case 'suffix':
+				preset.suffix = String(value) || NEW_PRESET.suffix;
+				break;
+		}
+
+		await this.plugin.saveSettings();
+		// Name, format and output all change what other rows say or whether they
+		// show at all, so the definitions are re-read after every change.
+		this.update();
 	}
 }
