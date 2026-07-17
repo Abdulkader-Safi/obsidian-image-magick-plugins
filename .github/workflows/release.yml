@@ -31,23 +31,22 @@ jobs:
               run: |
                   [ -f styles.css ] && echo "exists=true" >> "$GITHUB_OUTPUT" || echo "exists=false" >> "$GITHUB_OUTPUT"
 
-            # One attestation per asset, rather than one covering both.
+            # Every released file, in one attestation, as the community workflow
+            # documents:
+            # forum.obsidian.md/t/how-to-automate-artifact-attestation-for-releases/114445
             #
-            # A multi-subject attestation is valid and the GitHub CLI verifies it
-            # either way, but Obsidian's scorecard reported 2.0.0's attestation as
-            # failing verification for both assets, and a statement listing a
-            # second file is the one difference a per-artifact check would trip
-            # over. Splitting costs a step and removes the ambiguity.
-            - name: Attest main.js
+            # 2.0.1 briefly split this into one attestation per asset, chasing a
+            # scorecard error. That was wrong: 2.0.0 failed the same check with a
+            # multi-subject attestation, and 1.0.1 passed it with one, so the shape
+            # was never the variable. manifest.json is attested too now, which the
+            # earlier config left out.
+            - name: Attest plugin artifacts
               uses: actions/attest-build-provenance@v4
               with:
-                  subject-path: main.js
-
-            - name: Attest styles.css
-              if: steps.styles.outputs.exists == 'true'
-              uses: actions/attest-build-provenance@v4
-              with:
-                  subject-path: styles.css
+                  subject-path: |
+                      main.js
+                      manifest.json
+                      ${{ steps.styles.outputs.exists == 'true' && 'styles.css' || '' }}
 
             - name: Create release
               env:
